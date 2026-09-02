@@ -23,23 +23,28 @@ def analyze_traffic(packets):
 
         protocol = packet.get("protocol")
 
-        packet_size = packet.get("packet_size", 0)
+        packet_size = packet.get(
+            "packet_size",
+            0
+        )
 
-        # IP adreslerini ekle
+        # Kaynak IP varsa sete ekle
         if src_ip:
             unique_ips.add(src_ip)
 
+        # Hedef IP varsa sete ekle
         if dst_ip:
             unique_ips.add(dst_ip)
 
-        # Portları ekle
+        # Kaynak port varsa sete ekle
         if src_port is not None:
             unique_ports.add(src_port)
 
+        # Hedef port varsa sete ekle
         if dst_port is not None:
             unique_ports.add(dst_port)
 
-        # Protokol sayıları
+        # TCP paketi
         if protocol == "TCP":
 
             tcp_packets += 1
@@ -58,12 +63,16 @@ def analyze_traffic(packets):
                     dst_port
                 )
 
-                tcp_connections.add(connection)
+                tcp_connections.add(
+                    connection
+                )
 
+        # UDP paketi
         elif protocol == "UDP":
 
             udp_packets += 1
 
+        # ICMP paketi
         elif protocol == "ICMP":
 
             icmp_packets += 1
