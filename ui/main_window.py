@@ -18,6 +18,8 @@ from PySide6.QtWidgets import (
     QComboBox
 )
 
+from workers.analysis_worker import AnalysisWorker
+from PySide6.QtCore import QThread
 from PySide6.QtCore import Qt
 
 from core.packet_parser import load_pcap
@@ -30,6 +32,9 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
+
+        self.analysis_thread = None
+        self.analysis_worker = None
 
         self.displayed_packets = []
 
@@ -492,74 +497,157 @@ class MainWindow(QMainWindow):
     def start_analysis(self):
 
         if not self.selected_file:
-
             QMessageBox.warning(
                 self,
-                "Dosya Seçilmedi",
+                "Uyarı",
                 "Lütfen önce bir PCAP dosyası seçin."
             )
-
             return
 
-        try:
-
-            self.packets = load_pcap(
-                self.selected_file
-            )
-
-            if not self.packets:
-
-                QMessageBox.warning(
-                    self,
-                    "Analiz Başarısız",
-                    "PCAP dosyasında analiz edilebilir paket bulunamadı."
-                )
-
-                return
-
-            # Traffic statistics
-            statistics = analyze_traffic(
-                self.packets
-            )
-
-            # Detection Engine
-            self.alerts = run_detection(
-                self.packets
-            )
-
-            # Risk Engine
-            risk = calculate_risk(
-                self.alerts
-            )
-
-            # Arayüzü güncelle
-            self.update_statistics(
-                statistics,
-                self.alerts,
-                risk
-            )
-
-            self.update_packet_table(
-                self.packets
-            )
-
-            self.update_alert_table(
-                self.alerts
-            )
-
+        if (
+            self.analysis_thread is not None
+            and self.analysis_thread.isRunning()
+        ):
             QMessageBox.information(
                 self,
-                "Analiz Tamamlandı",
-                "PCAP analizi başarıyla tamamlandı."
+                "Analiz Devam Ediyor",
+                "Bir PCAP analizi zaten devam ediyor."
             )
+            return
 
-        except Exception as error:
+        self.statusBar().showMessage(
+            "PCAP analizi hazırlanıyor..."
+        )
 
-            QMessageBox.critical(
-                self,
-                "Hata",
-                f"Analiz sırasında hata oluştu:\n{error}"
-            )        
+        self.analysis_thread = QThread()
+
+        self.analysis_worker = AnalysisWorker(
+            self.selected_file
+        )
+
+        self.analysis_worker.moveToThread(
+            self.analysis_thread
+        )
+
+        self.analysis_thread.started.connect(
+            self.analysis_worker.run
+        )
+
+        self.analysis_worker.stage_changed.connect(
+            self.on_analysis_stage_changed
+        )
+
+        self.analysis_worker.finished.connect(
+            self.on_analysis_finished
+        )
+
+        self.analysis_worker.failed.connect(
+            self.on_analysis_failed
+        )
+
+        self.analysis_worker.finished.connect(
+            self.analysis_thread.quit
+        )
+
+        self.analysis_worker.failed.connect(
+            self.analysis_thread.quit
+        )
+
+        self.analysis_worker.finished.connect(
+            self.analysis_worker.deleteLater
+        )
+
+        self.analysis_worker.failed.connect(
+            self.analysis_worker.deleteLater
+        )
+
+        self.analysis_thread.finished.connect(
+            self.on_analysis_thread_finished
+        )
+
+        self.analysis_thread.finished.connect(
+            self.analysis_thread.deleteLater
+        )
+
+        self.analysis_thread.start()
+
+    def on_analysis_stage_changed(self, message):
+        self.statusBar().showMessage(message)    
+
+    def on_analysis_finished(self, result):
+
+        self.packets = result.packets
+        self.displayed_packets = result.packets
+
+        # Yeni Alert modellerini mevcut GUI ile
+        # geçici olarak uyumlu hale getiriyoruz.
+        self.alerts = []
+
+        for alert in result.alerts:
+            self.alerts.append({
+                "type": alert.alert_type,
+                "source_ip": alert.source_ip,
+                "risk_score": alert.risk_score,
+                "reason": alert.reason
+            })
+
+        risk = {
+            "score": result.risk_score,
+            "level": result.risk_level
+        }
+
+        self.update_statistics(
+            result.statistics,
+            self.alerts,
+            risk
+        )
+
+        self.update_packet_table(
+            self.packets
+        )
+
+        self.update_alert_table(
+            self.alerts
+        )
+
+        self.statusBar().showMessage(
+            f"Analiz tamamlandı - "
+            f"{result.total_packets} paket - "
+            f"{result.analysis_duration:.3f} saniye"
+        )
+
+        QMessageBox.information(
+            self,
+            "Analiz Tamamlandı",
+            (
+                f"PCAP analizi başarıyla tamamlandı.\n\n"
+                f"Paket sayısı: {result.total_packets}\n"
+                f"Risk seviyesi: {result.risk_level}\n"
+                f"Analiz süresi: "
+                f"{result.analysis_duration:.3f} saniye"
+            )
+        )
+
+    def on_analysis_failed(self, error_message):
+
+        self.statusBar().showMessage(
+            "Analiz başarısız oldu."
+        )
+
+        QMessageBox.critical(
+            self,
+            "PCAP Analiz Hatası",
+            (
+                "Seçilen PCAP dosyası analiz edilemedi.\n\n"
+                f"Detay: {error_message}"
+            )
+        )
+
+    def on_analysis_thread_finished(self):
+
+        self.analysis_thread = None
+        self.analysis_worker = None    
+
 
     def update_statistics(
         self,
