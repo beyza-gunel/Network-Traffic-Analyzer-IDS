@@ -6,6 +6,7 @@ from detectors.dns_anomaly import detect_dns_anomaly
 from detectors.traffic_burst import detect_traffic_burst
 from detectors.syn_flood import detect_syn_flood
 from detectors.smurf import detect_smurf_attack
+from detectors.arp_spoofing import detect_arp_spoofing
 
 
 def run_detection(packets):
@@ -26,6 +27,10 @@ def run_detection(packets):
 
     alerts.extend(
         detect_smurf_attack(packets)
+    )
+
+    alerts.extend(
+        detect_arp_spoofing(packets)
     )
 
     alerts.extend(
