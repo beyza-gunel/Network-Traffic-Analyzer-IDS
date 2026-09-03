@@ -15,7 +15,7 @@ from scapy.all import (
     Dot11,
     Dot11Beacon,
     Dot11Elt,
-    rdpcap
+    PcapReader
 )
 
 from scapy.layers.eap import (
@@ -27,8 +27,6 @@ from scapy.layers.eap import (
 def parse_packet(packet):
 
     packet_data = {
-
-        # 802.11 / Wi-Fi
         "wlan_type": None,
         "wlan_subtype": None,
         "wlan_protected": None,
@@ -39,92 +37,71 @@ def parse_packet(packet):
 
         "bssid": None,
         "ssid": None,
-
         "wifi_channel": None,
 
-        # WPA / EAPOL
         "eapol": False,
         "eapol_replay_counter": None,
         "eapol_nonce": None,
+        "eapol_key_number": None,
+        "eapol_key_ack": None,
+        "eapol_install": None,
+        "eapol_secure": None,
+        "eapol_has_key_mic": None,
 
-        # Ethernet / MAC
         "src_mac": None,
         "dst_mac": None,
 
-        # ARP
         "arp_opcode": None,
         "arp_sender_ip": None,
         "arp_sender_mac": None,
         "arp_target_ip": None,
         "arp_target_mac": None,
 
-        # ICMP
         "icmp_type": None,
         "icmp_code": None,
 
-        # Genel paket bilgileri
         "timestamp": float(packet.time),
         "packet_size": len(packet),
 
-        # IP
         "src_ip": None,
         "dst_ip": None,
 
-        # Protokol
         "protocol": "OTHER",
 
-        # TCP / UDP portları
         "src_port": None,
         "dst_port": None,
 
-        # TCP
         "tcp_flags": None,
-
-        # DNS
         "dns_query": None
     }
 
-    # =========================================================
-    # ETHERNET / MAC BİLGİLERİ
-    # =========================================================
+    # -------------------------------------------------
+    # ETHERNET
+    # -------------------------------------------------
 
-    if packet.haslayer(Ether):
+    ether = packet.getlayer(Ether)
 
-        packet_data["src_mac"] = (
-            packet[Ether].src
-        )
+    if ether is not None:
+        packet_data["src_mac"] = ether.src
+        packet_data["dst_mac"] = ether.dst
 
-        packet_data["dst_mac"] = (
-            packet[Ether].dst
-        )
+    # -------------------------------------------------
+    # 802.11
+    # -------------------------------------------------
 
-    # =========================================================
-    # IEEE 802.11 / WI-FI
-    # =========================================================
+    dot11 = packet.getlayer(Dot11)
 
-    if packet.haslayer(Dot11):
+    if dot11 is not None:
 
-        dot11 = packet[Dot11]
+        wlan_type = int(dot11.type)
+        wlan_subtype = int(dot11.subtype)
 
-        packet_data["wlan_type"] = int(
-            dot11.type
-        )
+        packet_data["wlan_type"] = wlan_type
+        packet_data["wlan_subtype"] = wlan_subtype
 
-        packet_data["wlan_subtype"] = int(
-            dot11.subtype
-        )
-
-        packet_data["wlan_addr1"] = (
-            dot11.addr1
-        )
-
-        packet_data["wlan_addr2"] = (
-            dot11.addr2
-        )
-
-        packet_data["wlan_addr3"] = (
-            dot11.addr3
-        )
+        packet_data["wlan_addr1"] = dot11.addr1
+        packet_data["wlan_addr2"] = dot11.addr2
+        packet_data["wlan_addr3"] = dot11.addr3
 
         packet_data["src_mac"] = (
             dot11.addr2
@@ -136,267 +113,299 @@ def parse_packet(packet):
             or packet_data["dst_mac"]
         )
 
-        packet_data["bssid"] = (
-            dot11.addr3
-        )
+        packet_data["bssid"] = dot11.addr3
 
         try:
             packet_data["wlan_protected"] = bool(
                 int(dot11.FCfield) & 0x40
             )
-
         except Exception:
-            packet_data["wlan_protected"] = None    
+            pass
 
-    if packet.haslayer(Dot11Beacon):
+        # Beacon ise SSID çıkar.
+        # Her Wi-Fi paketinde Beacon aramıyoruz.
+        if wlan_type == 0 and wlan_subtype == 8:
 
-        element = packet.getlayer(
-            Dot11Elt
-        )
+            element = packet.getlayer(Dot11Elt)
 
-        while element is not None:
+            while element is not None:
 
-            if element.ID == 0:
+                if element.ID == 0:
 
-                try:
-                    packet_data["ssid"] = (
-                        element.info.decode(
-                            errors="ignore"
+                    try:
+                        packet_data["ssid"] = (
+                            element.info.decode(
+                                errors="ignore"
+                            )
                         )
-                    )
+                    except Exception:
+                        packet_data["ssid"] = str(
+                            element.info
+                        )
 
-                except Exception:
-                    packet_data["ssid"] = str(
-                        element.info
-                    )
+                    break
 
-                break
-
-            element = element.payload.getlayer(
-                Dot11Elt
-            )
-
-    if packet.haslayer(RadioTap):
-
-        try:
-            frequency = (
-                packet[RadioTap]
-                .ChannelFrequency
-            )
-
-            if frequency:
-
-                frequency = int(
-                    frequency
+                element = element.payload.getlayer(
+                    Dot11Elt
                 )
 
-                if 2412 <= frequency <= 2472:
+        # RadioTap kanalı yalnız Wi-Fi paketinde işle.
+        radiotap = packet.getlayer(RadioTap)
 
-                    packet_data["wifi_channel"] = (
-                        (frequency - 2407) // 5
-                    )
+        if radiotap is not None:
 
-                elif frequency == 2484:
+            try:
 
-                    packet_data["wifi_channel"] = 14
+                frequency = (
+                    radiotap.ChannelFrequency
+                )
 
-        except Exception:
-            pass        
+                if frequency:
 
-    if packet.haslayer(EAPOL):
+                    frequency = int(frequency)
+
+                    if 2412 <= frequency <= 2472:
+                        packet_data["wifi_channel"] = (
+                            (frequency - 2407) // 5
+                        )
+
+                    elif frequency == 2484:
+                        packet_data["wifi_channel"] = 14
+
+            except Exception:
+                pass
+
+    # -------------------------------------------------
+    # EAPOL
+    # -------------------------------------------------
+
+    eapol = packet.getlayer(EAPOL)
+
+    if eapol is not None:
 
         packet_data["eapol"] = True
 
-    if packet.haslayer(EAPOL_KEY):
+        key_layer = packet.getlayer(
+            EAPOL_KEY
+        )
 
-        try:
+        if key_layer is not None:
 
-            key_layer = packet[
-                EAPOL_KEY
-            ]
-
-            packet_data[
-                "eapol_replay_counter"
-            ] = int(
-                key_layer.key_replay_counter
-            )
-
-            nonce = (
-                key_layer.key_nonce
-            )
-
-            if nonce:
+            try:
 
                 packet_data[
-                    "eapol_nonce"
-                ] = nonce.hex()
+                    "eapol_replay_counter"
+                ] = int(
+                    key_layer.key_replay_counter
+                )
 
-        except Exception:
-            pass    
+                nonce = key_layer.key_nonce
 
-    # =========================================================
-    # IP BİLGİLERİ
-    # =========================================================
+                if nonce:
+                    packet_data[
+                        "eapol_nonce"
+                    ] = nonce.hex()
 
-    if packet.haslayer(IP):
+                packet_data[
+                    "eapol_key_number"
+                ] = int(
+                    key_layer.guess_key_number()
+                )
 
-        packet_data["src_ip"] = (
-            packet[IP].src
-        )
+                packet_data[
+                    "eapol_key_ack"
+                ] = int(
+                    key_layer.key_ack
+                )
 
-        packet_data["dst_ip"] = (
-            packet[IP].dst
-        )
+                packet_data[
+                    "eapol_install"
+                ] = int(
+                    key_layer.install
+                )
 
-    # =========================================================
+                packet_data[
+                    "eapol_secure"
+                ] = int(
+                    key_layer.secure
+                )
+
+                packet_data[
+                    "eapol_has_key_mic"
+                ] = int(
+                    key_layer.has_key_mic
+                )
+
+            except Exception:
+                pass
+
+    # -------------------------------------------------
     # ARP
-    # =========================================================
+    # -------------------------------------------------
 
-    if packet.haslayer(ARP):
+    arp = packet.getlayer(ARP)
+
+    if arp is not None:
 
         packet_data["protocol"] = "ARP"
 
         packet_data["arp_opcode"] = int(
-            packet[ARP].op
+            arp.op
         )
 
-        packet_data["arp_sender_ip"] = (
-            packet[ARP].psrc
-        )
+        packet_data["arp_sender_ip"] = arp.psrc
+        packet_data["arp_sender_mac"] = arp.hwsrc
+        packet_data["arp_target_ip"] = arp.pdst
+        packet_data["arp_target_mac"] = arp.hwdst
 
-        packet_data["arp_sender_mac"] = (
-            packet[ARP].hwsrc
-        )
+        packet_data["src_ip"] = arp.psrc
+        packet_data["dst_ip"] = arp.pdst
 
-        packet_data["arp_target_ip"] = (
-            packet[ARP].pdst
-        )
+        return packet_data
 
-        packet_data["arp_target_mac"] = (
-            packet[ARP].hwdst
-        )
+    # -------------------------------------------------
+    # IP
+    # -------------------------------------------------
 
-        # ARP paketlerinde normal IP katmanı bulunmadığı için
-        # genel kaynak/hedef IP alanlarını da ARP bilgilerinden
-        # dolduruyoruz.
+    ip_layer = packet.getlayer(IP)
+
+    if ip_layer is not None:
+
         packet_data["src_ip"] = (
-            packet[ARP].psrc
+            ip_layer.src
         )
 
         packet_data["dst_ip"] = (
-            packet[ARP].pdst
+            ip_layer.dst
         )
 
-    # =========================================================
+    # -------------------------------------------------
     # TCP
-    # =========================================================
+    # -------------------------------------------------
 
-    elif packet.haslayer(TCP):
+    tcp = packet.getlayer(TCP)
+
+    if tcp is not None:
 
         packet_data["protocol"] = "TCP"
-
-        packet_data["src_port"] = (
-            packet[TCP].sport
-        )
-
-        packet_data["dst_port"] = (
-            packet[TCP].dport
-        )
-
+        packet_data["src_port"] = tcp.sport
+        packet_data["dst_port"] = tcp.dport
         packet_data["tcp_flags"] = str(
-            packet[TCP].flags
+            tcp.flags
         )
 
-    # =========================================================
-    # UDP
-    # =========================================================
+    else:
 
-    elif packet.haslayer(UDP):
+        # ---------------------------------------------
+        # UDP
+        # ---------------------------------------------
 
-        packet_data["protocol"] = "UDP"
+        udp = packet.getlayer(UDP)
 
-        packet_data["src_port"] = (
-            packet[UDP].sport
-        )
+        if udp is not None:
 
-        packet_data["dst_port"] = (
-            packet[UDP].dport
-        )
+            packet_data["protocol"] = "UDP"
+            packet_data["src_port"] = udp.sport
+            packet_data["dst_port"] = udp.dport
 
-    # =========================================================
-    # ICMP
-    # =========================================================
+        else:
 
-    elif packet.haslayer(ICMP):
+            # -----------------------------------------
+            # ICMP
+            # -----------------------------------------
 
-        packet_data["protocol"] = "ICMP"
+            icmp = packet.getlayer(ICMP)
 
-        packet_data["icmp_type"] = int(
-            packet[ICMP].type
-        )
+            if icmp is not None:
 
-        packet_data["icmp_code"] = int(
-            packet[ICMP].code
-        )
+                packet_data["protocol"] = "ICMP"
 
-    # =========================================================
-    # DNS
-    # =========================================================
-
-    if (
-        packet.haslayer(DNS)
-        and packet.haslayer(DNSQR)
-    ):
-
-        try:
-
-            query = packet[DNSQR].qname
-
-            if isinstance(query, bytes):
-
-                query = query.decode(
-                    errors="ignore"
+                packet_data["icmp_type"] = int(
+                    icmp.type
                 )
 
-            packet_data["dns_query"] = (
-                query.rstrip(".")
+                packet_data["icmp_code"] = int(
+                    icmp.code
+                )
+
+    # -------------------------------------------------
+    # DNS
+    # -------------------------------------------------
+
+    if packet_data["protocol"] in {
+        "UDP",
+        "TCP"
+    }:
+
+        dns = packet.getlayer(DNS)
+
+        if dns is not None:
+
+            dnsqr = packet.getlayer(
+                DNSQR
             )
 
-        except Exception:
+            if dnsqr is not None:
 
-            packet_data["dns_query"] = None
+                try:
+
+                    query = dnsqr.qname
+
+                    if isinstance(
+                        query,
+                        bytes
+                    ):
+
+                        query = query.decode(
+                            errors="ignore"
+                        )
+
+                    packet_data[
+                        "dns_query"
+                    ] = query.rstrip(".")
+
+                except Exception:
+                    pass
 
     return packet_data
 
 
 def load_pcap(file_path):
 
+    parsed_packets = []
+
     try:
 
-        packets = rdpcap(
-            file_path
+        with PcapReader(file_path) as pcap_reader:
+
+            for packet_number, packet in enumerate(
+                pcap_reader,
+                start=1
+            ):
+
+                try:
+
+                    parsed_packets.append(
+                        parse_packet(packet)
+                    )
+
+                except Exception as error:
+
+                    print(
+                        "Bir paket işlenemedi:",
+                        error
+                    )
+
+                if packet_number % 10000 == 0:
+
+                    print(
+                        f"{packet_number} paket okundu..."
+                    )
+
+        print(
+            f"PCAP okuma tamamlandı: "
+            f"{len(parsed_packets)} paket"
         )
-
-        parsed_packets = []
-
-        for packet in packets:
-
-            try:
-
-                parsed_packet = (
-                    parse_packet(packet)
-                )
-
-                parsed_packets.append(
-                    parsed_packet
-                )
-
-            except Exception as error:
-
-                print(
-                    "Bir paket işlenemedi:",
-                    error
-                )
 
         return parsed_packets
 
@@ -404,9 +413,8 @@ def load_pcap(file_path):
 
         print(
             "PCAP dosyası okunurken "
-            "hata oluştu:"
+            "hata oluştu:",
+            error
         )
-
-        print(error)
 
         return []

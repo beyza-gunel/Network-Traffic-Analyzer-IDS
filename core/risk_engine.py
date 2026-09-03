@@ -12,16 +12,35 @@ def calculate_risk(alerts):
 
     seen_alert_types = set()
 
-    flood_types = {
+    # -------------------------------------------------
+    # TRAFFIC BURST İLE İLİŞKİLİ ÖZEL SALDIRILAR
+    # -------------------------------------------------
+
+    burst_correlated_types = {
         "SYN_FLOOD",
         "ICMP_FLOOD",
-        "SMURF_ATTACK"
+        "SMURF_ATTACK",
+        "DEAUTH_ATTACK",
+        "DISASSOCIATION_ATTACK"
     }
 
-    has_specific_flood = any(
-        alert.get("type") in flood_types
+    has_specific_burst_attack = any(
+        alert.get("type") in burst_correlated_types
         for alert in alerts
     )
+
+    # -------------------------------------------------
+    # EVIL TWIN / ROGUE AP KORELASYONU
+    # -------------------------------------------------
+
+    has_evil_twin = any(
+        alert.get("type") == "EVIL_TWIN"
+        for alert in alerts
+    )
+
+    # -------------------------------------------------
+    # RİSK HESAPLAMA
+    # -------------------------------------------------
 
     for alert in alerts:
 
@@ -40,12 +59,13 @@ def calculate_risk(alerts):
         contribution = base_score
         contribution_type = "PRIMARY"
 
-        # Traffic Burst, başka bir flood saldırısının
-        # sonucuysa tam puanla tekrar sayma.
+        # Traffic Burst başka bir saldırının
+        # sonucuysa tam puan verme.
         if (
             alert_type == "TRAFFIC_BURST"
-            and has_specific_flood
+            and has_specific_burst_attack
         ):
+
             contribution = min(
                 base_score,
                 3
@@ -53,8 +73,23 @@ def calculate_risk(alerts):
 
             contribution_type = "SUPPORTING"
 
-        # Aynı alarm türü tekrar ederse
-        # genel risk puanını gereksiz şişirme.
+        # Evil Twin zaten tespit edilmişse
+        # Rogue AP aynı olayın destekleyici
+        # göstergesi olarak değerlendirilir.
+        elif (
+            alert_type == "ROGUE_AP"
+            and has_evil_twin
+        ):
+
+            contribution = min(
+                base_score,
+                3
+            )
+
+            contribution_type = "SUPPORTING"
+
+        # Aynı alarm türü birden fazla kez
+        # oluşursa riski gereksiz şişirme.
         elif alert_type in seen_alert_types:
 
             contribution = min(
@@ -77,10 +112,15 @@ def calculate_risk(alerts):
             alert_type
         )
 
+    # Maksimum risk puanı
     total_score = min(
         total_score,
         100
     )
+
+    # -------------------------------------------------
+    # RİSK SEVİYESİ
+    # -------------------------------------------------
 
     if total_score >= 20:
         level = "CRITICAL"

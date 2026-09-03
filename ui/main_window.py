@@ -504,6 +504,7 @@ class MainWindow(QMainWindow):
             )
             return
 
+        # Aynı anda ikinci analiz başlamasın.
         if (
             self.analysis_thread is not None
             and self.analysis_thread.isRunning()
@@ -511,15 +512,15 @@ class MainWindow(QMainWindow):
             QMessageBox.information(
                 self,
                 "Analiz Devam Ediyor",
-                "Bir PCAP analizi zaten devam ediyor."
+                "Mevcut PCAP analizi henüz tamamlanmadı."
             )
             return
 
         self.statusBar().showMessage(
-            "PCAP analizi hazırlanıyor..."
+            "PCAP analizi başlatılıyor..."
         )
 
-        self.analysis_thread = QThread()
+        self.analysis_thread = QThread(self)
 
         self.analysis_worker = AnalysisWorker(
             self.selected_file
@@ -529,10 +530,12 @@ class MainWindow(QMainWindow):
             self.analysis_thread
         )
 
+        # Thread başlayınca Worker çalışsın.
         self.analysis_thread.started.connect(
             self.analysis_worker.run
         )
 
+        # Worker sinyalleri.
         self.analysis_worker.stage_changed.connect(
             self.on_analysis_stage_changed
         )
@@ -545,6 +548,7 @@ class MainWindow(QMainWindow):
             self.on_analysis_failed
         )
 
+        # İş bitince thread durdurulsun.
         self.analysis_worker.finished.connect(
             self.analysis_thread.quit
         )
@@ -553,6 +557,7 @@ class MainWindow(QMainWindow):
             self.analysis_thread.quit
         )
 
+        # Worker yalnızca işi bittikten sonra silinsin.
         self.analysis_worker.finished.connect(
             self.analysis_worker.deleteLater
         )
@@ -561,12 +566,9 @@ class MainWindow(QMainWindow):
             self.analysis_worker.deleteLater
         )
 
+        # Thread gerçekten bittikten sonra cleanup.
         self.analysis_thread.finished.connect(
             self.on_analysis_thread_finished
-        )
-
-        self.analysis_thread.finished.connect(
-            self.analysis_thread.deleteLater
         )
 
         self.analysis_thread.start()
@@ -645,8 +647,13 @@ class MainWindow(QMainWindow):
 
     def on_analysis_thread_finished(self):
 
+        thread = self.analysis_thread
+
+        self.analysis_worker = None
         self.analysis_thread = None
-        self.analysis_worker = None    
+
+        if thread is not None:
+            thread.deleteLater()  
 
 
     def update_statistics(
@@ -772,14 +779,23 @@ class MainWindow(QMainWindow):
         self,
         packets
     ):
-        self.displayed_packets = packets
+
+        MAX_DISPLAY_PACKETS = 5000
+
+        packets_to_display = packets[
+            :MAX_DISPLAY_PACKETS
+        ]
+
+        self.displayed_packets = (
+            packets_to_display
+        )
 
         self.packet_table.setRowCount(
-            len(packets)
+            len(packets_to_display)
         )
 
         for row, packet in enumerate(
-            packets
+            packets_to_display
         ):
 
             values = [
@@ -809,7 +825,7 @@ class MainWindow(QMainWindow):
                     row,
                     column,
                     item
-                )    
+                )
 
     def update_alert_table(
         self,
@@ -986,3 +1002,27 @@ class MainWindow(QMainWindow):
         self.update_packet_table(
             self.packets
         )    
+
+    def closeEvent(self, event):
+
+        if (
+            self.analysis_thread is not None
+            and self.analysis_thread.isRunning()
+        ):
+
+            self.statusBar().showMessage(
+                "Analiz işlemi sonlandırılıyor..."
+            )
+
+            self.analysis_thread.quit()
+
+            # Thread'in kapanmasını bekle.
+            if not self.analysis_thread.wait(5000):
+
+                self.analysis_thread.requestInterruption()
+
+                self.analysis_thread.quit()
+
+                self.analysis_thread.wait()
+
+        event.accept()    

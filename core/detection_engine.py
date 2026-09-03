@@ -9,11 +9,25 @@ from detectors.smurf import detect_smurf_attack
 from detectors.arp_spoofing import detect_arp_spoofing
 from detectors.deauth import detect_deauth_attack
 from detectors.disassociation import detect_disassociation_attack
-
+from detectors.rogue_ap import detect_rogue_ap
+from detectors.evil_twin import detect_evil_twin
+from detectors.krack import detect_krack_attack
 
 def run_detection(packets):
 
     alerts = []
+
+    alerts.extend(
+        detect_rogue_ap(packets)
+    )
+
+    alerts.extend(
+        detect_evil_twin(packets)
+    )
+
+    alerts.extend(
+        detect_krack_attack(packets)
+    )
 
     alerts.extend(
         detect_deauth_attack(packets)
