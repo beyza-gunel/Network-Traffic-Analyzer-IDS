@@ -4,11 +4,16 @@ from detectors.icmp_flood import detect_icmp_flood
 from detectors.unusual_port import detect_unusual_port_activity
 from detectors.dns_anomaly import detect_dns_anomaly
 from detectors.traffic_burst import detect_traffic_burst
+from detectors.syn_flood import detect_syn_flood
 
 
 def run_detection(packets):
 
     alerts = []
+
+    alerts.extend(
+        detect_syn_flood(packets)
+    )
 
     alerts.extend(
         detect_port_scan(packets)

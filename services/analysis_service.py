@@ -92,6 +92,10 @@ class AnalysisService:
                 "level",
                 "LOW"
             ),
+            risk_breakdown=risk.get(
+                "contributions",
+                []
+            ),
             analysis_duration=analysis_duration
         )
 

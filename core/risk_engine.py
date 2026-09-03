@@ -1,33 +1,100 @@
 def calculate_risk(alerts):
 
+    if not alerts:
+        return {
+            "score": 0,
+            "level": "LOW",
+            "contributions": []
+        }
+
     total_score = 0
+    contributions = []
+
+    seen_alert_types = set()
+
+    flood_types = {
+        "SYN_FLOOD",
+        "ICMP_FLOOD"
+    }
+
+    has_specific_flood = any(
+        alert.get("type") in flood_types
+        for alert in alerts
+    )
 
     for alert in alerts:
 
-        score = alert.get(
-            "risk_score",
-            0
+        alert_type = alert.get(
+            "type",
+            "UNKNOWN"
         )
 
-        total_score += score
+        base_score = int(
+            alert.get(
+                "risk_score",
+                0
+            )
+        )
 
-    if total_score <= 4:
+        contribution = base_score
+        contribution_type = "PRIMARY"
 
-        level = "LOW"
+        # Traffic Burst, başka bir flood saldırısının
+        # sonucuysa tam puanla tekrar sayma.
+        if (
+            alert_type == "TRAFFIC_BURST"
+            and has_specific_flood
+        ):
+            contribution = min(
+                base_score,
+                3
+            )
 
-    elif total_score <= 9:
+            contribution_type = "SUPPORTING"
 
-        level = "MEDIUM"
+        # Aynı alarm türü tekrar ederse
+        # genel risk puanını gereksiz şişirme.
+        elif alert_type in seen_alert_types:
 
-    elif total_score <= 19:
+            contribution = min(
+                base_score,
+                2
+            )
 
+            contribution_type = "REPEATED"
+
+        total_score += contribution
+
+        contributions.append({
+            "alert_type": alert_type,
+            "base_score": base_score,
+            "contribution": contribution,
+            "contribution_type": contribution_type
+        })
+
+        seen_alert_types.add(
+            alert_type
+        )
+
+    total_score = min(
+        total_score,
+        100
+    )
+
+    if total_score >= 20:
+        level = "CRITICAL"
+
+    elif total_score >= 10:
         level = "HIGH"
 
-    else:
+    elif total_score >= 5:
+        level = "MEDIUM"
 
-        level = "CRITICAL"
+    else:
+        level = "LOW"
 
     return {
         "score": total_score,
-        "level": level
+        "level": level,
+        "contributions": contributions
     }

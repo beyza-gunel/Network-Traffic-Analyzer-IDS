@@ -4,57 +4,88 @@ from collections import defaultdict
 def detect_syn_scan(
     packets,
     syn_threshold=10,
+    unique_port_threshold=5,
     time_window=10
 ):
-
-    alerts = []
-
-    syn_activity = defaultdict(list)
+    activity = defaultdict(list)
 
     for packet in packets:
 
         if packet.get("protocol") != "TCP":
             continue
 
-        flags = packet.get("tcp_flags")
-
-        if flags != "S":
+        if packet.get("tcp_flags") != "S":
             continue
 
         src_ip = packet.get("src_ip")
+        dst_port = packet.get("dst_port")
         timestamp = packet.get("timestamp")
 
-        if src_ip is None or timestamp is None:
+        if (
+            not src_ip
+            or dst_port is None
+            or timestamp is None
+        ):
             continue
 
-        syn_activity[src_ip].append(timestamp)
+        activity[src_ip].append(
+            (
+                float(timestamp),
+                dst_port
+            )
+        )
 
-    for src_ip, timestamps in syn_activity.items():
+    alerts = []
 
-        timestamps.sort()
+    for source_ip, events in activity.items():
 
-        for start_index in range(len(timestamps)):
+        events.sort(
+            key=lambda item: item[0]
+        )
 
-            start_time = timestamps[start_index]
+        for start_index in range(len(events)):
 
-            count = 0
+            ports = set()
+            syn_count = 0
 
-            for current_time in timestamps[start_index:]:
+            start_time = events[start_index][0]
 
-                if current_time - start_time > time_window:
+            for end_index in range(
+                start_index,
+                len(events)
+            ):
+
+                timestamp, destination_port = (
+                    events[end_index]
+                )
+
+                if (
+                    timestamp - start_time
+                    > time_window
+                ):
                     break
 
-                count += 1
+                syn_count += 1
+                ports.add(destination_port)
 
-            if count >= syn_threshold:
+            if (
+                syn_count >= syn_threshold
+                and
+                len(ports) >= unique_port_threshold
+            ):
 
                 alerts.append({
                     "type": "SYN_SCAN",
-                    "source_ip": src_ip,
+
+                    "source_ip": source_ip,
+
                     "risk_score": 7,
+
                     "reason": (
                         f"{time_window} saniye içinde "
-                        f"{count} SYN paketi gönderildi"
+                        f"{syn_count} SYN paketi ile "
+                        f"{len(ports)} farklı hedef "
+                        f"port tarandı"
                     )
                 })
 

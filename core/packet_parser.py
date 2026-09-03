@@ -1,3 +1,7 @@
+from utils.runtime_env import configure_runtime
+
+configure_runtime()
+
 from scapy.all import IP, TCP, UDP, ICMP, DNS, DNSQR, rdpcap
 
 

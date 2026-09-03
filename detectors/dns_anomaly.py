@@ -1,78 +1,177 @@
 from collections import defaultdict
 
 
+IGNORED_DOMAIN_SUFFIXES = (
+    ".local",
+    ".localdomain"
+)
+
+
+def is_ignored_domain(domain):
+    domain = domain.lower().rstrip(".")
+
+    return domain.endswith(
+        IGNORED_DOMAIN_SUFFIXES
+    )
+
+
+def max_events_in_window(
+    timestamps,
+    time_window
+):
+    if not timestamps:
+        return 0
+
+    timestamps = sorted(timestamps)
+
+    left = 0
+    best_count = 0
+
+    for right in range(len(timestamps)):
+
+        while (
+            timestamps[right]
+            - timestamps[left]
+            > time_window
+        ):
+            left += 1
+
+        current_count = (
+            right - left + 1
+        )
+
+        best_count = max(
+            best_count,
+            current_count
+        )
+
+    return best_count
+
+
 def detect_dns_anomaly(
     packets,
-    query_threshold=20,
-    domain_length_threshold=50
+    source_threshold=50,
+    repeated_domain_threshold=25,
+    domain_length_threshold=50,
+    time_window=10
 ):
+    source_queries = defaultdict(list)
+    domain_queries = defaultdict(list)
 
-    alerts = []
-
-    source_dns_count = defaultdict(int)
-    domain_count = defaultdict(int)
-
-    long_domains_seen = set()
+    long_domains = set()
 
     for packet in packets:
 
-        dns_query = packet.get("dns_query")
+        domain = packet.get(
+            "dns_query"
+        )
 
-        if not dns_query:
+        source_ip = packet.get(
+            "src_ip"
+        )
+
+        timestamp = packet.get(
+            "timestamp"
+        )
+
+        if (
+            not domain
+            or not source_ip
+            or timestamp is None
+        ):
             continue
 
-        src_ip = packet.get("src_ip")
+        domain = (
+            str(domain)
+            .lower()
+            .rstrip(".")
+        )
 
-        if src_ip:
-            source_dns_count[src_ip] += 1
+        # mDNS / yerel servis keşif trafiğini
+        # saldırı olarak değerlendirme.
+        if is_ignored_domain(domain):
+            continue
 
-        domain_count[dns_query] += 1
+        timestamp = float(timestamp)
 
-        if len(dns_query) >= domain_length_threshold:
+        source_queries[
+            source_ip
+        ].append(timestamp)
 
-            key = (
-                src_ip,
-                dns_query
+        domain_queries[
+            (source_ip, domain)
+        ].append(timestamp)
+
+        if (
+            len(domain)
+            >= domain_length_threshold
+        ):
+            long_domains.add(
+                (source_ip, domain)
             )
 
-            if key not in long_domains_seen:
+    alerts = []
 
-                alerts.append({
-                    "type": "DNS_ANOMALY",
-                    "source_ip": src_ip,
-                    "risk_score": 6,
-                    "reason": (
-                        f"Olağandışı uzun DNS sorgusu: "
-                        f"{len(dns_query)} karakter"
-                    )
-                })
+    # Olağandışı uzun domain
+    for source_ip, domain in long_domains:
 
-                long_domains_seen.add(key)
+        alerts.append({
+            "type": "DNS_ANOMALY",
+            "source_ip": source_ip,
+            "risk_score": 6,
+            "reason": (
+                "Olağandışı uzun DNS sorgusu "
+                f"tespit edildi: {domain}"
+            )
+        })
 
-    for src_ip, count in source_dns_count.items():
+    # Kısa sürede aşırı DNS sorgusu
+    for source_ip, timestamps in (
+        source_queries.items()
+    ):
 
-        if count >= query_threshold:
+        peak_count = max_events_in_window(
+            timestamps,
+            time_window
+        )
+
+        if peak_count >= source_threshold:
 
             alerts.append({
                 "type": "DNS_ANOMALY",
-                "source_ip": src_ip,
+                "source_ip": source_ip,
                 "risk_score": 6,
                 "reason": (
-                    f"Toplam {count} DNS sorgusu gönderildi"
+                    f"{time_window} saniye içinde "
+                    f"{peak_count} DNS sorgusu "
+                    "tespit edildi"
                 )
             })
 
-    for domain, count in domain_count.items():
+    # Aynı domaine aşırı sorgu
+    for (
+        source_ip,
+        domain
+    ), timestamps in domain_queries.items():
 
-        if count >= query_threshold:
+        peak_count = max_events_in_window(
+            timestamps,
+            time_window
+        )
+
+        if (
+            peak_count
+            >= repeated_domain_threshold
+        ):
 
             alerts.append({
                 "type": "DNS_ANOMALY",
-                "source_ip": None,
+                "source_ip": source_ip,
                 "risk_score": 6,
                 "reason": (
+                    f"{time_window} saniye içinde "
                     f"{domain} alan adına "
-                    f"{count} DNS sorgusu gönderildi"
+                    f"{peak_count} sorgu gönderildi"
                 )
             })
 

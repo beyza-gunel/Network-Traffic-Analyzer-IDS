@@ -16,3 +16,6 @@ __pycache__/
 # Operating system files
 .DS_Store
 Thumbs.db
+
+# Real PCAP datasets
+data/real_pcaps/

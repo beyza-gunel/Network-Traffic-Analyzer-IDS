@@ -1,3 +1,7 @@
+from utils.runtime_env import configure_runtime
+
+configure_runtime()
+
 from scapy.all import IP, TCP, wrpcap
 
 
@@ -6,7 +10,17 @@ packets = []
 base_time = 3000.0
 
 
-for index in range(15):
+ports = [
+    80,
+    81,
+    82,
+    83,
+    84,
+    85
+]
+
+
+for index in range(12):
 
     packet = (
         IP(
@@ -16,12 +30,14 @@ for index in range(15):
         /
         TCP(
             sport=41000 + index,
-            dport=80,
+            dport=ports[index % len(ports)],
             flags="S"
         )
     )
 
-    packet.time = base_time + index * 0.2
+    packet.time = (
+        base_time + index * 0.2
+    )
 
     packets.append(packet)
 
