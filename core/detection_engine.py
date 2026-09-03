@@ -7,11 +7,21 @@ from detectors.traffic_burst import detect_traffic_burst
 from detectors.syn_flood import detect_syn_flood
 from detectors.smurf import detect_smurf_attack
 from detectors.arp_spoofing import detect_arp_spoofing
+from detectors.deauth import detect_deauth_attack
+from detectors.disassociation import detect_disassociation_attack
 
 
 def run_detection(packets):
 
     alerts = []
+
+    alerts.extend(
+        detect_deauth_attack(packets)
+    )
+
+    alerts.extend(
+        detect_disassociation_attack(packets)
+    )
 
     alerts.extend(
         detect_syn_flood(packets)

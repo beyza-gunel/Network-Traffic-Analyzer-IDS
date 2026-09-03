@@ -11,13 +11,42 @@ from scapy.all import (
     ICMP,
     DNS,
     DNSQR,
+    RadioTap,
+    Dot11,
+    Dot11Beacon,
+    Dot11Elt,
     rdpcap
+)
+
+from scapy.layers.eap import (
+    EAPOL,
+    EAPOL_KEY
 )
 
 
 def parse_packet(packet):
 
     packet_data = {
+
+        # 802.11 / Wi-Fi
+        "wlan_type": None,
+        "wlan_subtype": None,
+        "wlan_protected": None,
+
+        "wlan_addr1": None,
+        "wlan_addr2": None,
+        "wlan_addr3": None,
+
+        "bssid": None,
+        "ssid": None,
+
+        "wifi_channel": None,
+
+        # WPA / EAPOL
+        "eapol": False,
+        "eapol_replay_counter": None,
+        "eapol_nonce": None,
+
         # Ethernet / MAC
         "src_mac": None,
         "dst_mac": None,
@@ -68,6 +97,142 @@ def parse_packet(packet):
         packet_data["dst_mac"] = (
             packet[Ether].dst
         )
+
+    # =========================================================
+    # IEEE 802.11 / WI-FI
+    # =========================================================
+
+    if packet.haslayer(Dot11):
+
+        dot11 = packet[Dot11]
+
+        packet_data["wlan_type"] = int(
+            dot11.type
+        )
+
+        packet_data["wlan_subtype"] = int(
+            dot11.subtype
+        )
+
+        packet_data["wlan_addr1"] = (
+            dot11.addr1
+        )
+
+        packet_data["wlan_addr2"] = (
+            dot11.addr2
+        )
+
+        packet_data["wlan_addr3"] = (
+            dot11.addr3
+        )
+
+        packet_data["src_mac"] = (
+            dot11.addr2
+            or packet_data["src_mac"]
+        )
+
+        packet_data["dst_mac"] = (
+            dot11.addr1
+            or packet_data["dst_mac"]
+        )
+
+        packet_data["bssid"] = (
+            dot11.addr3
+        )
+
+        try:
+            packet_data["wlan_protected"] = bool(
+                int(dot11.FCfield) & 0x40
+            )
+
+        except Exception:
+            packet_data["wlan_protected"] = None    
+
+    if packet.haslayer(Dot11Beacon):
+
+        element = packet.getlayer(
+            Dot11Elt
+        )
+
+        while element is not None:
+
+            if element.ID == 0:
+
+                try:
+                    packet_data["ssid"] = (
+                        element.info.decode(
+                            errors="ignore"
+                        )
+                    )
+
+                except Exception:
+                    packet_data["ssid"] = str(
+                        element.info
+                    )
+
+                break
+
+            element = element.payload.getlayer(
+                Dot11Elt
+            )
+
+    if packet.haslayer(RadioTap):
+
+        try:
+            frequency = (
+                packet[RadioTap]
+                .ChannelFrequency
+            )
+
+            if frequency:
+
+                frequency = int(
+                    frequency
+                )
+
+                if 2412 <= frequency <= 2472:
+
+                    packet_data["wifi_channel"] = (
+                        (frequency - 2407) // 5
+                    )
+
+                elif frequency == 2484:
+
+                    packet_data["wifi_channel"] = 14
+
+        except Exception:
+            pass        
+
+    if packet.haslayer(EAPOL):
+
+        packet_data["eapol"] = True
+
+    if packet.haslayer(EAPOL_KEY):
+
+        try:
+
+            key_layer = packet[
+                EAPOL_KEY
+            ]
+
+            packet_data[
+                "eapol_replay_counter"
+            ] = int(
+                key_layer.key_replay_counter
+            )
+
+            nonce = (
+                key_layer.key_nonce
+            )
+
+            if nonce:
+
+                packet_data[
+                    "eapol_nonce"
+                ] = nonce.hex()
+
+        except Exception:
+            pass    
 
     # =========================================================
     # IP BİLGİLERİ
