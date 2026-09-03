@@ -8,6 +8,10 @@ from scapy.all import IP, TCP, UDP, ICMP, DNS, DNSQR, rdpcap
 def parse_packet(packet):
 
     packet_data = {
+
+        "icmp_type": None,
+        "icmp_code": None,
+
         "timestamp": float(packet.time),
         "packet_size": len(packet),
 
@@ -64,6 +68,14 @@ def parse_packet(packet):
     elif packet.haslayer(ICMP):
 
         packet_data["protocol"] = "ICMP"
+
+        packet_data["icmp_type"] = int(
+            packet[ICMP].type
+        )
+
+        packet_data["icmp_code"] = int(
+            packet[ICMP].code
+        )
 
     # -----------------------------
     # DNS

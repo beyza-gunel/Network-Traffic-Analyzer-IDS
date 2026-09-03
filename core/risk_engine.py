@@ -14,7 +14,8 @@ def calculate_risk(alerts):
 
     flood_types = {
         "SYN_FLOOD",
-        "ICMP_FLOOD"
+        "ICMP_FLOOD",
+        "SMURF_ATTACK"
     }
 
     has_specific_flood = any(

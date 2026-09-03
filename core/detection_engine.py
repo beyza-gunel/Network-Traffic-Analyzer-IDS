@@ -5,6 +5,7 @@ from detectors.unusual_port import detect_unusual_port_activity
 from detectors.dns_anomaly import detect_dns_anomaly
 from detectors.traffic_burst import detect_traffic_burst
 from detectors.syn_flood import detect_syn_flood
+from detectors.smurf import detect_smurf_attack
 
 
 def run_detection(packets):
@@ -21,6 +22,10 @@ def run_detection(packets):
 
     alerts.extend(
         detect_syn_scan(packets)
+    )
+
+    alerts.extend(
+        detect_smurf_attack(packets)
     )
 
     alerts.extend(
