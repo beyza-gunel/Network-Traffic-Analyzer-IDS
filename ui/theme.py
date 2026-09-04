@@ -329,6 +329,22 @@ QScrollBar::handle:horizontal {
     border-radius: 5px;
 }
 
+
+QProgressBar {
+    background-color: #091421;
+    border: 1px solid #24405d;
+    border-radius: 6px;
+    min-height: 10px;
+    max-height: 10px;
+    text-align: center;
+    color: transparent;
+}
+
+QProgressBar::chunk {
+    background-color: #0ea5e9;
+    border-radius: 5px;
+}
+
 QStatusBar {
     background-color: #07101c;
     color: #8194aa;

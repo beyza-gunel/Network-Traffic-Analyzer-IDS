@@ -25,6 +25,8 @@ from PySide6.QtWidgets import (
     QFrame,
     QSizePolicy,
     QSplitter,
+    QProgressBar,
+    QApplication,
 )
 
 from workers.analysis_worker import AnalysisWorker
@@ -76,10 +78,10 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(
             "Network Traffic Analyzer & Intrusion Detection System"
         )
-        self.resize(1360, 800)
+        self.resize(1440, 900)
         self.setMinimumSize(
-            1080,
-            640,
+            1100,
+            650,
         )
         self.setStyleSheet(
             APP_STYLESHEET
@@ -288,6 +290,63 @@ class MainWindow(QMainWindow):
 
         content_layout.addWidget(
             action_panel
+        )
+
+        # -----------------------------------------------------
+        # Analiz ilerleme göstergesi
+        # -----------------------------------------------------
+
+        self.analysis_progress_panel = QFrame()
+        self.analysis_progress_panel.setObjectName(
+            "detailPanel"
+        )
+
+        progress_layout = QHBoxLayout(
+            self.analysis_progress_panel
+        )
+        progress_layout.setContentsMargins(
+            12,
+            7,
+            12,
+            7,
+        )
+        progress_layout.setSpacing(
+            10
+        )
+
+        self.analysis_progress_label = QLabel(
+            "PCAP analizi hazırlanıyor..."
+        )
+        self.analysis_progress_label.setObjectName(
+            "sectionSubtitle"
+        )
+        self.analysis_progress_label.setMinimumWidth(
+            220
+        )
+
+        self.analysis_progress = QProgressBar()
+        self.analysis_progress.setRange(
+            0,
+            0,
+        )
+        self.analysis_progress.setTextVisible(
+            False
+        )
+
+        progress_layout.addWidget(
+            self.analysis_progress_label
+        )
+        progress_layout.addWidget(
+            self.analysis_progress,
+            1,
+        )
+
+        self.analysis_progress_panel.setVisible(
+            False
+        )
+
+        content_layout.addWidget(
+            self.analysis_progress_panel
         )
 
         self.select_file_button.clicked.connect(
@@ -1417,6 +1476,100 @@ class MainWindow(QMainWindow):
                     ),
                 )
 
+    def reset_analysis_display(
+        self,
+    ):
+        """
+        Yeni bir PCAP analizi başlarken önceki dosyanın sonuçlarını
+        ekranda bırakmaz. Böylece kullanıcı yeni dosya analiz edilirken
+        eski paket/risk/alarm değerlerini yeni dosyaya ait sanmaz.
+        """
+
+        self.packets = []
+        self.displayed_packets = []
+        self.alerts = []
+        self.displayed_alerts = []
+        self.flows = []
+
+        self.current_statistics = {}
+        self.current_risk_score = 0
+        self.current_risk_level = "LOW"
+        self.current_risk_breakdown = []
+
+        placeholder = "—"
+
+        for label in (
+            self.total_packets_label,
+            self.unique_ips_label,
+            self.unique_ports_label,
+            self.tcp_connections_label,
+            self.udp_packets_label,
+            self.critical_alerts_label,
+            self.suspicious_label,
+        ):
+            label.setText(
+                placeholder
+            )
+
+        self.risk_label.setText(
+            "ANALYZING"
+        )
+        self.risk_label.setStyleSheet(
+            "color: #38bdf8;"
+            "font-size: 22px;"
+            "font-weight: 800;"
+        )
+
+        self.sidebar_packet_value.setText(
+            placeholder
+        )
+        self.sidebar_alert_value.setText(
+            placeholder
+        )
+        self.sidebar_risk_value.setText(
+            "ANALYZING"
+        )
+        self.sidebar_risk_value.setStyleSheet(
+            "color: #38bdf8;"
+            "font-size: 14px;"
+            "font-weight: 800;"
+        )
+
+        self.packet_table.setRowCount(
+            0
+        )
+        self.alert_table.setRowCount(
+            0
+        )
+
+        self.packet_detail.clear()
+        self.alert_detail.clear()
+
+        # Analitik sekmelerde de önceki dosyanın verisini bırakma.
+        self.timeline_tab.update_data(
+            [],
+            [],
+        )
+        self.ip_analysis_tab.update_data(
+            [],
+            [],
+        )
+        self.network_graph_tab.update_data(
+            [],
+            [],
+        )
+        self.flow_tab.update_data(
+            [],
+            [],
+        )
+
+        self.analytics_loaded = {
+            "timeline": True,
+            "ip": True,
+            "graph": True,
+            "flow": True,
+        }
+
     def start_analysis(
         self,
     ):
@@ -1454,6 +1607,13 @@ class MainWindow(QMainWindow):
             )
             return
 
+        self.reset_analysis_display()
+
+        # Önceki analizin tablo/grafiklerinin yeni analiz sırasında
+        # kısa süre görünmesini engellemek için temizlenmiş arayüzü
+        # worker başlamadan hemen önce ekrana işle.
+        QApplication.processEvents()
+
         self.analyze_button.setEnabled(
             False
         )
@@ -1470,6 +1630,17 @@ class MainWindow(QMainWindow):
         )
         self.header_status_label.setText(
             "● ANALYZING"
+        )
+
+        self.analysis_progress_label.setText(
+            "PCAP dosyası inceleniyor..."
+        )
+        self.analysis_progress.setRange(
+            0,
+            0,
+        )
+        self.analysis_progress_panel.setVisible(
+            True
         )
 
         self.analysis_thread = QThread(
@@ -1527,6 +1698,12 @@ class MainWindow(QMainWindow):
 
         self.header_status_label.setText(
             "● ANALYZING"
+        )
+
+        self.analysis_progress_label.setText(
+            str(
+                message
+            )
         )
 
     def on_analysis_finished(
@@ -1631,14 +1808,29 @@ class MainWindow(QMainWindow):
             )
         )
         self.sidebar_risk_value.setText(
-            str(
-                result.risk_level
+            (
+                f"{result.risk_level} "
+                f"• {result.risk_score}/100"
             )
         )
         self.sidebar_risk_value.setStyleSheet(
             f"color: {risk_color(result.risk_level)};"
             "font-size: 14px;"
             "font-weight: 800;"
+        )
+
+        self.analysis_progress.setRange(
+            0,
+            100,
+        )
+        self.analysis_progress.setValue(
+            100
+        )
+        self.analysis_progress_label.setText(
+            "Analiz tamamlandı."
+        )
+        self.analysis_progress_panel.setVisible(
+            False
         )
 
         self.statusBar().showMessage(
@@ -1673,6 +1865,20 @@ class MainWindow(QMainWindow):
         )
         self.header_status_label.setText(
             "● ANALYSIS FAILED"
+        )
+
+        self.analysis_progress.setRange(
+            0,
+            100,
+        )
+        self.analysis_progress.setValue(
+            0
+        )
+        self.analysis_progress_label.setText(
+            "Analiz başarısız oldu."
+        )
+        self.analysis_progress_panel.setVisible(
+            False
         )
 
         QMessageBox.critical(
@@ -1869,8 +2075,19 @@ class MainWindow(QMainWindow):
             )
         ).upper()
 
+        risk_score = int(
+            risk.get(
+                "score",
+                0,
+            )
+            or 0
+        )
+
         self.risk_label.setText(
-            risk_level
+            (
+                f"{risk_level} "
+                f"• {risk_score}/100"
+            )
         )
 
         color = risk_color(
@@ -1879,7 +2096,7 @@ class MainWindow(QMainWindow):
 
         self.risk_label.setStyleSheet(
             f"color: {color};"
-            "font-size: 25px;"
+            "font-size: 22px;"
             "font-weight: 800;"
         )
 

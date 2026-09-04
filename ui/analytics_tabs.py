@@ -4,6 +4,7 @@ from datetime import datetime
 import networkx as nx
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 
 from PySide6.QtWidgets import (
     QWidget,
@@ -23,6 +24,7 @@ from matplotlib.backends.backend_qtagg import (
 )
 from matplotlib.figure import Figure
 from matplotlib.patches import Patch
+import matplotlib.dates as mdates
 
 
 BG = "#08111f"
@@ -122,6 +124,80 @@ def _section_header(
     return frame
 
 
+def _format_timestamp(
+    timestamp,
+):
+    if timestamp is None:
+        return "-"
+
+    try:
+        return datetime.fromtimestamp(
+            float(
+                timestamp
+            )
+        ).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+
+    except (
+        TypeError,
+        ValueError,
+        OverflowError,
+        OSError,
+    ):
+        return str(
+            timestamp
+        )
+
+
+def _alert_source_entity(
+    alert,
+):
+    source_ip = alert.get(
+        "source_ip"
+    )
+
+    if source_ip:
+        return str(
+            source_ip
+        )
+
+    evidence = (
+        alert.get(
+            "evidence"
+        )
+        or []
+    )
+
+    prefixes = (
+        "Source MAC:",
+        "MAC 1:",
+        "AP MAC:",
+        "Attacker MAC:",
+        "BSSID:",
+    )
+
+    for prefix in prefixes:
+        for item in evidence:
+            value = str(
+                item
+            )
+
+            if value.lower().startswith(
+                prefix.lower()
+            ):
+                return (
+                    value.split(
+                        ":",
+                        1,
+                    )[1]
+                    .strip()
+                )
+
+    return "-"
+
+
+
 class TimelineTab(QWidget):
 
     def __init__(self):
@@ -131,23 +207,50 @@ class TimelineTab(QWidget):
             self
         )
         layout.setContentsMargins(
-            12,
-            12,
-            12,
-            12,
+            10,
+            10,
+            10,
+            10,
         )
         layout.setSpacing(
-            10
+            8
         )
 
         layout.addWidget(
             _section_header(
-                "Traffic Timeline",
+                "Attack & Traffic Timeline",
                 (
-                    "Paket yoğunluğunu zaman ekseninde "
-                    "ve alarm başlangıçlarını birlikte gösterir."
+                    "Paket yoğunluğu solda, tespit edilen güvenlik "
+                    "olayları sağda zaman sırasıyla gösterilir."
                 ),
             )
+        )
+
+        # Dikey yerleşimde grafik ve tablo birbirini fazla sıkıştırıyordu.
+        # Geniş masaüstü ekranını daha iyi kullanmak için yatay splitter.
+        self.timeline_splitter = QSplitter(
+            Qt.Horizontal
+        )
+
+        # ------------------------------------------------------
+        # SOL: TRAFFIC + EVENT MARKERS
+        # ------------------------------------------------------
+        chart_panel = QFrame()
+        chart_panel.setObjectName(
+            "detailPanel"
+        )
+
+        chart_layout = QVBoxLayout(
+            chart_panel
+        )
+        chart_layout.setContentsMargins(
+            8,
+            8,
+            8,
+            8,
+        )
+        chart_layout.setSpacing(
+            4
         )
 
         self.figure = Figure(
@@ -158,11 +261,299 @@ class TimelineTab(QWidget):
         self.canvas = FigureCanvas(
             self.figure
         )
+        self.canvas.setMinimumHeight(
+            300
+        )
 
-        layout.addWidget(
+        chart_layout.addWidget(
             self.canvas,
             1,
         )
+
+        self.timeline_splitter.addWidget(
+            chart_panel
+        )
+
+        # ------------------------------------------------------
+        # SAĞ: EVENT LIST + DETAIL
+        # ------------------------------------------------------
+        event_panel = QFrame()
+        event_panel.setObjectName(
+            "detailPanel"
+        )
+
+        event_layout = QVBoxLayout(
+            event_panel
+        )
+        event_layout.setContentsMargins(
+            8,
+            8,
+            8,
+            8,
+        )
+        event_layout.setSpacing(
+            6
+        )
+
+        event_title = QLabel(
+            "Detected Security Events"
+        )
+        event_title.setObjectName(
+            "sectionTitle"
+        )
+        event_layout.addWidget(
+            event_title
+        )
+
+        self.event_table = QTableWidget()
+
+        columns = [
+            "Time",
+            "Alert Type",
+            "Source",
+            "Risk",
+        ]
+
+        self.event_table.setColumnCount(
+            len(
+                columns
+            )
+        )
+
+        self.event_table.setHorizontalHeaderLabels(
+            columns
+        )
+
+        header = self.event_table.horizontalHeader()
+        header.setSectionResizeMode(
+            0,
+            QHeaderView.ResizeToContents,
+        )
+        header.setSectionResizeMode(
+            1,
+            QHeaderView.Stretch,
+        )
+        header.setSectionResizeMode(
+            2,
+            QHeaderView.Stretch,
+        )
+        header.setSectionResizeMode(
+            3,
+            QHeaderView.ResizeToContents,
+        )
+
+        self.event_table.setEditTriggers(
+            QTableWidget.NoEditTriggers
+        )
+        self.event_table.setSelectionBehavior(
+            QTableWidget.SelectRows
+        )
+        self.event_table.setSelectionMode(
+            QTableWidget.SingleSelection
+        )
+        self.event_table.setAlternatingRowColors(
+            True
+        )
+        self.event_table.verticalHeader().setDefaultSectionSize(
+            30
+        )
+        self.event_table.setMinimumHeight(
+            120
+        )
+
+        self.event_detail = QTextEdit()
+        self.event_detail.setReadOnly(
+            True
+        )
+        self.event_detail.setMinimumHeight(
+            80
+        )
+        self.event_detail.setPlaceholderText(
+            "Bir güvenlik olayını seçerek reason ve evidence detaylarını görüntüleyin."
+        )
+
+        self.event_content_splitter = QSplitter(
+            Qt.Vertical
+        )
+
+        self.event_content_splitter.addWidget(
+            self.event_table
+        )
+
+        self.event_content_splitter.addWidget(
+            self.event_detail
+        )
+
+        self.event_content_splitter.setStretchFactor(
+            0,
+            3
+        )
+
+        self.event_content_splitter.setStretchFactor(
+            1,
+            2
+        )
+
+        self.event_content_splitter.setSizes(
+            [
+                190,
+                120,
+            ]
+        )
+
+        self.event_content_splitter.setChildrenCollapsible(
+            False
+        )
+
+        event_layout.addWidget(
+            self.event_content_splitter,
+            1,
+        )
+
+        self.timeline_splitter.addWidget(
+            event_panel
+        )
+
+        self.timeline_splitter.setStretchFactor(
+            0,
+            5
+        )
+        self.timeline_splitter.setStretchFactor(
+            1,
+            4
+        )
+        self.timeline_splitter.setSizes(
+            [
+                720,
+                560,
+            ]
+        )
+        self.timeline_splitter.setChildrenCollapsible(
+            False
+        )
+
+        layout.addWidget(
+            self.timeline_splitter,
+            1,
+        )
+
+        self.timeline_alerts = []
+
+        self.event_table.cellClicked.connect(
+            self.show_event_detail
+        )
+
+    @staticmethod
+    def _resolve_alert_timestamp(
+        alert,
+        packets,
+    ):
+        """Alarmda first_seen yoksa ilgili IP/MAC paketlerinden zaman üret."""
+        first_seen = alert.get(
+            "first_seen"
+        )
+
+        if first_seen is not None:
+            try:
+                return float(
+                    first_seen
+                )
+            except (
+                TypeError,
+                ValueError,
+            ):
+                pass
+
+        source_ip = alert.get(
+            "source_ip"
+        )
+        destination_ip = alert.get(
+            "destination_ip"
+        )
+
+        evidence_text = " ".join(
+            str(
+                item
+            ).lower()
+            for item
+            in (
+                alert.get(
+                    "evidence"
+                )
+                or []
+            )
+        )
+
+        candidates = []
+
+        for packet in packets:
+            matched = False
+
+            if source_ip and (
+                packet.get(
+                    "src_ip"
+                ) == source_ip
+            ):
+                matched = True
+
+            elif destination_ip and (
+                packet.get(
+                    "dst_ip"
+                ) == destination_ip
+            ):
+                matched = True
+
+            elif evidence_text:
+                for key in (
+                    "src_mac",
+                    "dst_mac",
+                    "bssid",
+                    "wlan_addr1",
+                    "wlan_addr2",
+                    "wlan_addr3",
+                ):
+                    value = packet.get(
+                        key
+                    )
+
+                    if (
+                        value
+                        and str(
+                            value
+                        ).lower()
+                        in evidence_text
+                    ):
+                        matched = True
+                        break
+
+            if not matched:
+                continue
+
+            timestamp = packet.get(
+                "timestamp"
+            )
+
+            if timestamp is None:
+                continue
+
+            try:
+                candidates.append(
+                    float(
+                        timestamp
+                    )
+                )
+            except (
+                TypeError,
+                ValueError,
+            ):
+                continue
+
+        if candidates:
+            return min(
+                candidates
+            )
+
+        return None
 
     def update_data(
         self,
@@ -178,24 +569,10 @@ class TimelineTab(QWidget):
         _configure_axis(
             self.figure,
             axis,
-            "Packets per Second",
+            "Traffic Volume + Security Events",
         )
 
-        if not packets:
-            axis.text(
-                0.5,
-                0.5,
-                "Analiz edilecek trafik bulunamadı.",
-                color=MUTED,
-                ha="center",
-                va="center",
-            )
-            self.canvas.draw()
-            return
-
-        traffic_per_second = (
-            Counter()
-        )
+        traffic_per_second = Counter()
 
         for packet in packets:
             timestamp = packet.get(
@@ -225,65 +602,122 @@ class TimelineTab(QWidget):
             traffic_per_second
         )
 
-        values = [
-            traffic_per_second[
-                second
+        if seconds:
+            values = [
+                traffic_per_second[
+                    second
+                ]
+                for second
+                in seconds
             ]
-            for second in seconds
-        ]
 
-        times = [
-            datetime.fromtimestamp(
-                second
+            times = [
+                datetime.fromtimestamp(
+                    second
+                )
+                for second
+                in seconds
+            ]
+
+            axis.plot(
+                times,
+                values,
+                linewidth=2.0,
+                color=PRIMARY,
+                marker="o",
+                markersize=3.5,
+                label="Traffic",
             )
-            for second in seconds
-        ]
 
-        axis.plot(
-            times,
-            values,
-            linewidth=1.8,
-            color=PRIMARY,
-        )
+            axis.fill_between(
+                times,
+                values,
+                alpha=0.10,
+                color=PRIMARY,
+            )
 
-        axis.fill_between(
-            times,
-            values,
-            alpha=0.10,
-            color=PRIMARY,
-        )
+            # Küçük sentetik PCAP'lerde çizginin üst/alt kenara yapışmasını önle.
+            maximum_value = max(
+                values
+            )
 
-        shown_alerts = 0
+            axis.set_ylim(
+                bottom=0,
+                top=max(
+                    1,
+                    maximum_value
+                    * 1.25,
+                ),
+            )
+
+        else:
+            axis.text(
+                0.5,
+                0.5,
+                "Zaman bilgisi bulunan paket yok.",
+                color=MUTED,
+                ha="center",
+                va="center",
+            )
+
+        timeline_alerts = []
 
         for alert in alerts:
-            first_seen = alert.get(
-                "first_seen"
+            resolved_time = self._resolve_alert_timestamp(
+                alert,
+                packets,
             )
 
-            if first_seen is None:
+            copied_alert = dict(
+                alert
+            )
+            copied_alert[
+                "_timeline_time"
+            ] = resolved_time
+
+            timeline_alerts.append(
+                copied_alert
+            )
+
+        timeline_alerts.sort(
+            key=lambda alert: (
+                alert.get(
+                    "_timeline_time"
+                )
+                if alert.get(
+                    "_timeline_time"
+                )
+                is not None
+                else float(
+                    "inf"
+                )
+            )
+        )
+
+        for alert in timeline_alerts[
+            :30
+        ]:
+            event_timestamp = alert.get(
+                "_timeline_time"
+            )
+
+            if event_timestamp is None:
                 continue
 
-            if shown_alerts >= 20:
-                break
-
             try:
-                alert_time = (
-                    datetime.fromtimestamp(
-                        float(
-                            first_seen
-                        )
+                alert_time = datetime.fromtimestamp(
+                    float(
+                        event_timestamp
                     )
                 )
 
                 axis.axvline(
                     alert_time,
                     linestyle="--",
-                    alpha=0.55,
-                    linewidth=1.0,
+                    alpha=0.72,
+                    linewidth=1.25,
                     color=DANGER,
                 )
-
-                shown_alerts += 1
 
             except Exception:
                 pass
@@ -294,18 +728,154 @@ class TimelineTab(QWidget):
         axis.set_ylabel(
             "Packets / Second"
         )
-
         axis.grid(
             True,
-            alpha=0.28,
+            alpha=0.25,
             color=GRID,
         )
 
-        self.figure.autofmt_xdate()
-        self.figure.tight_layout(
-            pad=1.6
+        # Zaman etiketlerini kısa ve okunabilir tut.
+        # Tam tarih olay tablosunda zaten gösterildiği için grafikte
+        # yalnız saat:dakika:saniye kullanılır.
+        axis.xaxis.set_major_formatter(
+            mdates.DateFormatter(
+                "%H:%M:%S"
+            )
         )
+
+        for tick_label in axis.get_xticklabels():
+            tick_label.set_rotation(
+                18
+            )
+            tick_label.set_horizontalalignment(
+                "right"
+            )
+
+        # Alt etiketlerin panel sınırında kesilmesini önle.
+        self.figure.subplots_adjust(
+            left=0.11,
+            right=0.98,
+            top=0.88,
+            bottom=0.22,
+        )
+
         self.canvas.draw()
+
+        self.timeline_alerts = timeline_alerts
+
+        self.event_table.setRowCount(
+            len(
+                timeline_alerts
+            )
+        )
+
+        for row, alert in enumerate(
+            timeline_alerts
+        ):
+            values = [
+                _format_timestamp(
+                    alert.get(
+                        "_timeline_time"
+                    )
+                ),
+                alert.get(
+                    "type",
+                    "UNKNOWN",
+                ),
+                _alert_source_entity(
+                    alert
+                ),
+                alert.get(
+                    "risk_score",
+                    0,
+                ),
+            ]
+
+            for column, value in enumerate(
+                values
+            ):
+                item = QTableWidgetItem(
+                    str(
+                        value
+                    )
+                )
+
+                if (
+                    column == 3
+                    and int(
+                        alert.get(
+                            "risk_score",
+                            0,
+                        )
+                        or 0
+                    )
+                    >= 10
+                ):
+                    item.setForeground(
+                        QColor(
+                            DANGER
+                        )
+                    )
+
+                self.event_table.setItem(
+                    row,
+                    column,
+                    item,
+                )
+
+        self.event_detail.clear()
+
+        if timeline_alerts:
+            self.event_table.selectRow(
+                0
+            )
+            self.show_event_detail(
+                0,
+                0,
+            )
+
+    def show_event_detail(
+        self,
+        row,
+        column,
+    ):
+        if (
+            row < 0
+            or row >= len(
+                self.timeline_alerts
+            )
+        ):
+            return
+
+        alert = self.timeline_alerts[
+            row
+        ]
+
+        evidence = alert.get(
+            "evidence"
+        ) or []
+
+        evidence_text = "\n".join(
+            f"- {item}"
+            for item
+            in evidence
+        )
+
+        if not evidence_text:
+            evidence_text = "- Evidence bilgisi yok."
+
+        detail = (
+            f"Time: {_format_timestamp(alert.get('_timeline_time'))}\n"
+            f"Alert: {alert.get('type', 'UNKNOWN')}\n"
+            f"Source: {_alert_source_entity(alert)}\n"
+            f"Risk: {alert.get('risk_score', 0)}\n"
+            f"Reason: {alert.get('reason', '')}\n\n"
+            f"Evidence:\n{evidence_text}"
+        )
+
+        self.event_detail.setPlainText(
+            detail
+        )
 
 
 class IPAnalysisTab(QWidget):
@@ -330,8 +900,8 @@ class IPAnalysisTab(QWidget):
             _section_header(
                 "IP Analysis",
                 (
-                    "Aktif IP adreslerini, protokolleri, portları "
-                    "ve alarm ilişkilerini özetler."
+                    "Her IP için paket sayısı, protokoller, portlar, "
+                    "zaman aralığı, bağlantılar ve risk ilişkisini gösterir."
                 ),
             )
         )
@@ -340,13 +910,14 @@ class IPAnalysisTab(QWidget):
 
         columns = [
             "IP Address",
-            "Sent",
-            "Received",
-            "Total",
+            "Packet Count",
             "Protocols",
-            "Unique Ports",
+            "Ports",
+            "First Seen",
+            "Last Seen",
+            "Connections",
+            "Risk Score",
             "Alerts",
-            "Max Risk",
             "Status",
         ]
 
@@ -355,18 +926,62 @@ class IPAnalysisTab(QWidget):
                 columns
             )
         )
+
         self.table.setHorizontalHeaderLabels(
             columns
         )
-        self.table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.Stretch
+
+        header = self.table.horizontalHeader()
+
+        header.setStretchLastSection(
+            False
         )
+
+        # IP Analysis ekranındaki kritik sütunları pencere içinde
+        # görünür tut. Ports sütunu kalan alanı esnek olarak kullanır.
+        fixed_widths = {
+            0: 115,   # IP Address
+            1: 100,   # Packet Count
+            2: 95,    # Protocols
+            4: 160,   # First Seen
+            5: 160,   # Last Seen
+            6: 100,   # Connections
+            7: 90,    # Risk Score
+            8: 70,    # Alerts
+            9: 115,   # Status
+        }
+
+        for column, width in fixed_widths.items():
+            header.setSectionResizeMode(
+                column,
+                QHeaderView.Fixed,
+            )
+
+            self.table.setColumnWidth(
+                column,
+                width,
+            )
+
+        header.setSectionResizeMode(
+            3,
+            QHeaderView.Stretch,
+        )
+
+        # Tam ekran kullanımında sağ tarafta boş alan bırakma.
+        # Ports ve Status kalan genişliği birlikte kullanır.
+        header.setSectionResizeMode(
+            9,
+            QHeaderView.Stretch,
+        )
+
         self.table.setEditTriggers(
             QTableWidget.NoEditTriggers
         )
+
         self.table.setSelectionBehavior(
             QTableWidget.SelectRows
         )
+
         self.table.setAlternatingRowColors(
             True
         )
@@ -380,13 +995,15 @@ class IPAnalysisTab(QWidget):
         )
 
         self.detail = QTextEdit()
+
         self.detail.setReadOnly(
             True
         )
+
         self.detail.setPlaceholderText(
             (
                 "Bir IP adresine tıklayarak güvenlik "
-                "analiz detayını görüntüleyin."
+                "analiz detayını ve neden şüpheli olduğunu görüntüleyin."
             )
         )
 
@@ -398,20 +1015,22 @@ class IPAnalysisTab(QWidget):
             0,
             3
         )
+
         self.detail_splitter.setStretchFactor(
             1,
-            1
+            2
         )
+
         self.detail_splitter.setSizes(
             [
-                360,
-                150,
+                470,
+                190,
             ]
         )
 
         layout.addWidget(
             self.detail_splitter,
-            1
+            1,
         )
 
         self.ip_details = {}
@@ -431,38 +1050,95 @@ class IPAnalysisTab(QWidget):
                 "received": 0,
                 "protocols": set(),
                 "ports": set(),
+                "connections": set(),
+                "first_seen": None,
+                "last_seen": None,
                 "alerts": [],
             }
         )
+
+        def register_timestamp(
+            info,
+            timestamp,
+        ):
+            if timestamp is None:
+                return
+
+            try:
+                timestamp = float(
+                    timestamp
+                )
+
+            except (
+                TypeError,
+                ValueError,
+            ):
+                return
+
+            if (
+                info[
+                    "first_seen"
+                ]
+                is None
+                or timestamp
+                < info[
+                    "first_seen"
+                ]
+            ):
+                info[
+                    "first_seen"
+                ] = timestamp
+
+            if (
+                info[
+                    "last_seen"
+                ]
+                is None
+                or timestamp
+                > info[
+                    "last_seen"
+                ]
+            ):
+                info[
+                    "last_seen"
+                ] = timestamp
 
         for packet in packets:
             src_ip = packet.get(
                 "src_ip"
             )
+
             dst_ip = packet.get(
                 "dst_ip"
             )
+
             protocol = packet.get(
                 "protocol"
             )
+
             src_port = packet.get(
                 "src_port"
             )
+
             dst_port = packet.get(
                 "dst_port"
             )
 
+            timestamp = packet.get(
+                "timestamp"
+            )
+
             if src_ip:
-                ip_stats[
+                source_info = ip_stats[
                     src_ip
-                ][
+                ]
+
+                source_info[
                     "sent"
                 ] += 1
 
                 if protocol:
-                    ip_stats[
-                        src_ip
-                    ][
+                    source_info[
                         "protocols"
                     ].add(
                         protocol
@@ -472,46 +1148,97 @@ class IPAnalysisTab(QWidget):
                     src_port
                     is not None
                 ):
-                    ip_stats[
-                        src_ip
-                    ][
+                    source_info[
                         "ports"
                     ].add(
                         src_port
-                    )
-
-            if dst_ip:
-                ip_stats[
-                    dst_ip
-                ][
-                    "received"
-                ] += 1
-
-                if protocol:
-                    ip_stats[
-                        dst_ip
-                    ][
-                        "protocols"
-                    ].add(
-                        protocol
                     )
 
                 if (
                     dst_port
                     is not None
                 ):
-                    ip_stats[
-                        dst_ip
-                    ][
+                    source_info[
                         "ports"
                     ].add(
                         dst_port
                     )
 
+                if (
+                    dst_ip
+                    and dst_ip
+                    != src_ip
+                ):
+                    source_info[
+                        "connections"
+                    ].add(
+                        dst_ip
+                    )
+
+                register_timestamp(
+                    source_info,
+                    timestamp,
+                )
+
+            if dst_ip:
+                destination_info = (
+                    ip_stats[
+                        dst_ip
+                    ]
+                )
+
+                destination_info[
+                    "received"
+                ] += 1
+
+                if protocol:
+                    destination_info[
+                        "protocols"
+                    ].add(
+                        protocol
+                    )
+
+                if (
+                    src_port
+                    is not None
+                ):
+                    destination_info[
+                        "ports"
+                    ].add(
+                        src_port
+                    )
+
+                if (
+                    dst_port
+                    is not None
+                ):
+                    destination_info[
+                        "ports"
+                    ].add(
+                        dst_port
+                    )
+
+                if (
+                    src_ip
+                    and src_ip
+                    != dst_ip
+                ):
+                    destination_info[
+                        "connections"
+                    ].add(
+                        src_ip
+                    )
+
+                register_timestamp(
+                    destination_info,
+                    timestamp,
+                )
+
         for alert in alerts:
             source_ip = alert.get(
                 "source_ip"
             )
+
             destination_ip = (
                 alert.get(
                     "destination_ip"
@@ -570,7 +1297,7 @@ class IPAnalysisTab(QWidget):
         ) in enumerate(
             ordered_ips
         ):
-            total = (
+            packet_count = (
                 info[
                     "sent"
                 ]
@@ -585,7 +1312,7 @@ class IPAnalysisTab(QWidget):
                 ]
             )
 
-            max_risk = max(
+            risk_score = max(
                 (
                     int(
                         alert.get(
@@ -611,29 +1338,68 @@ class IPAnalysisTab(QWidget):
 
             protocols = ", ".join(
                 sorted(
-                    info[
+                    str(
+                        protocol
+                    )
+                    for protocol
+                    in info[
                         "protocols"
                     ]
                 )
             )
 
+            sorted_ports = sorted(
+                info[
+                    "ports"
+                ]
+            )
+
+            if len(
+                sorted_ports
+            ) <= 8:
+                ports_text = ", ".join(
+                    str(
+                        port
+                    )
+                    for port
+                    in sorted_ports
+                )
+            else:
+                ports_text = (
+                    ", ".join(
+                        str(
+                            port
+                        )
+                        for port
+                        in sorted_ports[
+                            :8
+                        ]
+                    )
+                    + f" (+{len(sorted_ports) - 8})"
+                )
+
             values = [
                 ip_address,
-                info[
-                    "sent"
-                ],
-                info[
-                    "received"
-                ],
-                total,
+                packet_count,
                 protocols,
-                len(
+                ports_text,
+                _format_timestamp(
                     info[
-                        "ports"
+                        "first_seen"
                     ]
                 ),
+                _format_timestamp(
+                    info[
+                        "last_seen"
+                    ]
+                ),
+                len(
+                    info[
+                        "connections"
+                    ]
+                ),
+                risk_score,
                 alert_count,
-                max_risk,
                 status,
             ]
 
@@ -643,21 +1409,32 @@ class IPAnalysisTab(QWidget):
             ) in enumerate(
                 values
             ):
-                item = (
-                    QTableWidgetItem(
-                        str(
-                            value
-                        )
+                item = QTableWidgetItem(
+                    str(
+                        value
                     )
                 )
 
                 if (
-                    column == 8
+                    column == 9
                     and status
                     == "SUSPICIOUS"
                 ):
                     item.setForeground(
-                        DANGER
+                        QColor(
+                            DANGER
+                        )
+                    )
+
+                if (
+                    column == 7
+                    and risk_score
+                    >= 10
+                ):
+                    item.setForeground(
+                        QColor(
+                            DANGER
+                        )
                     )
 
                 self.table.setItem(
@@ -685,14 +1462,38 @@ class IPAnalysisTab(QWidget):
 
         ip_address = item.text()
 
-        info = (
-            self.ip_details.get(
-                ip_address
-            )
+        info = self.ip_details.get(
+            ip_address
         )
 
         if not info:
             return
+
+        packet_count = (
+            info[
+                "sent"
+            ]
+            + info[
+                "received"
+            ]
+        )
+
+        risk_score = max(
+            (
+                int(
+                    alert.get(
+                        "risk_score",
+                        0,
+                    )
+                    or 0
+                )
+                for alert
+                in info[
+                    "alerts"
+                ]
+            ),
+            default=0,
+        )
 
         alert_lines = []
 
@@ -715,13 +1516,50 @@ class IPAnalysisTab(QWidget):
                 )
             )
 
+        connections_text = ", ".join(
+            sorted(
+                str(
+                    connection
+                )
+                for connection
+                in info[
+                    "connections"
+                ]
+            )
+        )
+
+        if not connections_text:
+            connections_text = "-"
+
+        ports_text = ", ".join(
+            str(
+                port
+            )
+            for port
+            in sorted(
+                info[
+                    "ports"
+                ]
+            )
+        )
+
+        if not ports_text:
+            ports_text = "-"
+
         text = (
             f"IP Address: {ip_address}\n"
+            f"Packet Count: {packet_count}\n"
             f"Sent Packets: {info['sent']}\n"
             f"Received Packets: {info['received']}\n"
             f"Protocols: "
-            f"{', '.join(sorted(info['protocols']))}\n"
-            f"Unique Ports: {len(info['ports'])}\n\n"
+            f"{', '.join(sorted(str(p) for p in info['protocols']))}\n"
+            f"Ports: {ports_text}\n"
+            f"First Seen: {_format_timestamp(info['first_seen'])}\n"
+            f"Last Seen: {_format_timestamp(info['last_seen'])}\n"
+            f"Connections: {len(info['connections'])}\n"
+            f"Connected IPs: {connections_text}\n"
+            f"Risk Score: {risk_score}\n"
+            f"Alert Count: {len(info['alerts'])}\n\n"
             f"Why Suspicious?\n"
             + "\n".join(
                 alert_lines
