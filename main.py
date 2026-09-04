@@ -1,37 +1,22 @@
-import os
 import sys
-from pathlib import Path
 
+from utils.runtime_env import configure_runtime
 
-cache_dir = (
-    Path(os.environ.get("LOCALAPPDATA", Path.home()))
-    / "NetworkTrafficAnalyzer"
-    / "cache"
-)
-
-cache_dir.mkdir(
-    parents=True,
-    exist_ok=True
-)
-
-os.environ.setdefault(
-    "XDG_CACHE_HOME",
-    str(cache_dir)
-)
-
+# Scapy ve diğer kütüphaneler yüklenmeden önce
+# uygulamaya ait cache klasörünü hazırla.
+configure_runtime()
 
 from PySide6.QtWidgets import QApplication
+
 from ui.main_window import MainWindow
 
 
 def main():
-
     app = QApplication(
         sys.argv
     )
 
     window = MainWindow()
-
     window.show()
 
     sys.exit(

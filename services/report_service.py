@@ -80,7 +80,10 @@ def build_report_data(
     risk_score,
     risk_level,
     risk_breakdown=None,
+    flows=None,
 ):
+    flows = list(flows or [])
+
     protocol_counter = Counter()
     ip_counter = Counter()
     connection_counter = Counter()
@@ -264,6 +267,22 @@ def build_report_data(
                 )
             ],
         },
+        "flows": [
+            (
+                flow.to_dict()
+                if hasattr(
+                    flow,
+                    "to_dict",
+                )
+                else _json_safe(
+                    flow
+                )
+            )
+            for flow in flows[:1000]
+        ],
+        "flow_count": len(
+            flows
+        ),
         "packet_sample": packet_sample,
         "packet_sample_limit": (
             MAX_REPORT_PACKETS
@@ -470,6 +489,10 @@ def export_html(
             <div>UDP Traffic</div>
             <div class="value">{stats.get("udp_packets", 0)}</div>
         </div>
+        <div class="card">
+            <div>Flows</div>
+            <div class="value">{report_data.get("flow_count", 0)}</div>
+        </div>
     </div>
 
     <h2>Protocol Distribution</h2>
@@ -658,6 +681,10 @@ def export_pdf(
             (
                 "Alert Count: "
                 f"{len(alerts)}"
+            ),
+            (
+                "Flow Count: "
+                f"{report_data.get('flow_count', 0)}"
             ),
             (
                 "Risk Score: "

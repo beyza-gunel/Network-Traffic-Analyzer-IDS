@@ -29,6 +29,7 @@ from ui.analytics_tabs import (
     IPAnalysisTab,
     NetworkGraphTab,
 )
+from ui.flow_tab import FlowTab
 from services.report_service import (
     build_report_data,
     export_json,
@@ -52,6 +53,7 @@ class MainWindow(QMainWindow):
         self.displayed_packets = []
         self.alerts = []
         self.displayed_alerts = []
+        self.flows = []
 
         self.current_statistics = {}
         self.current_risk_score = 0
@@ -175,6 +177,7 @@ class MainWindow(QMainWindow):
         self.timeline_tab = TimelineTab()
         self.ip_analysis_tab = IPAnalysisTab()
         self.network_graph_tab = NetworkGraphTab()
+        self.flow_tab = FlowTab()
 
         self.tabs.addTab(
             self.timeline_tab,
@@ -188,11 +191,16 @@ class MainWindow(QMainWindow):
             self.network_graph_tab,
             "Network Graph",
         )
+        self.tabs.addTab(
+            self.flow_tab,
+            "Flows",
+        )
 
         self.analytics_loaded = {
             "timeline": False,
             "ip": False,
             "graph": False,
+            "flow": False,
         }
 
         self.tabs.currentChanged.connect(
@@ -806,6 +814,10 @@ class MainWindow(QMainWindow):
         self.packets = (
             result.packets
         )
+        self.flows = list(
+            result.flows
+            or []
+        )
         self.displayed_packets = []
 
         self.current_statistics = dict(
@@ -867,6 +879,7 @@ class MainWindow(QMainWindow):
             "timeline": False,
             "ip": False,
             "graph": False,
+            "flow": False,
         }
 
         self.on_tab_changed(
@@ -998,6 +1011,21 @@ class MainWindow(QMainWindow):
             )
             self.analytics_loaded[
                 "graph"
+            ] = True
+
+        elif (
+            current_widget
+            is self.flow_tab
+            and not self.analytics_loaded[
+                "flow"
+            ]
+        ):
+            self.flow_tab.update_data(
+                self.flows,
+                self.alerts,
+            )
+            self.analytics_loaded[
+                "flow"
             ] = True
 
     # =========================================================
@@ -1193,11 +1221,16 @@ class MainWindow(QMainWindow):
             f"Source MAC: {packet.get('src_mac')}\n"
             f"Destination MAC: {packet.get('dst_mac')}\n"
             f"Protocol: {packet.get('protocol')}\n"
+            f"Application Protocol: {packet.get('application_protocol')}\n"
             f"Source Port: {packet.get('src_port')}\n"
             f"Destination Port: {packet.get('dst_port')}\n"
             f"Packet Size: {packet.get('packet_size')} bytes\n"
             f"TCP Flags: {packet.get('tcp_flags')}\n"
             f"DNS Query: {packet.get('dns_query')}\n"
+            f"HTTP Method: {packet.get('http_method')}\n"
+            f"HTTP Host: {packet.get('http_host')}\n"
+            f"HTTP Path: {packet.get('http_path')}\n"
+            f"HTTPS Detected: {packet.get('https_detected')}\n"
             f"ICMP Type: {packet.get('icmp_type')}\n"
             f"ICMP Code: {packet.get('icmp_code')}\n"
             f"SSID: {packet.get('ssid')}\n"
@@ -1854,6 +1887,7 @@ class MainWindow(QMainWindow):
             risk_breakdown=(
                 self.current_risk_breakdown
             ),
+            flows=self.flows,
         )
 
         try:
