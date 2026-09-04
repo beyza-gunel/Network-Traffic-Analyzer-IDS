@@ -18,4 +18,6 @@ __pycache__/
 Thumbs.db
 
 # Real PCAP datasets
+data/real_pcaps/test_results.json
 data/real_pcaps/
+test_results.json

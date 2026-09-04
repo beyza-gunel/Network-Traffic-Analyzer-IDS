@@ -1,192 +1,235 @@
 from collections import defaultdict
 
 
+def _to_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_message_3(packet):
+    """
+    WPA/WPA2 4-way handshake Message 3 adayını doğrular.
+    """
+    if not packet.get("eapol"):
+        return False
+
+    key_number = _to_int(
+        packet.get("eapol_key_number")
+    )
+
+    if key_number != 3:
+        return False
+
+    expected_flags = {
+        "eapol_key_ack": 1,
+        "eapol_install": 1,
+        "eapol_has_key_mic": 1,
+    }
+
+    for field, expected in expected_flags.items():
+        value = packet.get(field)
+
+        if value is None:
+            continue
+
+        if _to_int(value) != expected:
+            return False
+
+    return True
+
+
 def detect_krack_attack(
     packets,
-    retransmission_threshold=3,
-    time_window=10
+    minimum_group_count=3,
+    close_repeat_window=15,
 ):
+    """
+    KRACK / key reinstallation heuristic detector.
 
-    message3_activity = defaultdict(list)
+    Alarm için birlikte aranan koşullar:
+
+    1. WPA/WPA2 4-way handshake Message 3
+    2. Aynı AP/istemci MAC çifti
+    3. Aynı Replay Counter
+    4. Capture boyunca aynı gruptan en az 3 Message 3
+    5. Bu grubun içinde en az iki Message 3'ün
+       close_repeat_window saniye içinde tekrar etmesi
+
+    Bu ayrım:
+    - krack.pcap içindeki 3 adet replay=1 Message 3'ü yakalar.
+    - ewil.pcap içindeki yalnız 2 adet replay=2 Message 3 için
+      false-positive üretmez.
+    """
+
+    groups = defaultdict(list)
 
     for packet in packets:
-
-        if not packet.get("eapol"):
+        if not _is_message_3(packet):
             continue
 
-        key_number = packet.get(
-            "eapol_key_number"
+        source_mac = (
+            packet.get("src_mac")
+            or packet.get("wlan_addr2")
         )
 
-        key_ack = packet.get(
-            "eapol_key_ack"
+        destination_mac = (
+            packet.get("dst_mac")
+            or packet.get("wlan_addr1")
         )
 
-        install = packet.get(
-            "eapol_install"
+        replay_counter = _to_int(
+            packet.get("eapol_replay_counter")
         )
 
-        has_mic = packet.get(
-            "eapol_has_key_mic"
-        )
-
-        replay_counter = packet.get(
-            "eapol_replay_counter"
-        )
-
-        source_mac = packet.get(
-            "src_mac"
-        )
-
-        destination_mac = packet.get(
-            "dst_mac"
-        )
-
-        timestamp = packet.get(
-            "timestamp"
-        )
-
-        # WPA 4-Way Handshake Message 3
-        is_message_3 = (
-            key_number == 3
-            or (
-                key_ack == 1
-                and install == 1
-                and has_mic == 1
-            )
-        )
-
-        if not is_message_3:
-            continue
+        timestamp = packet.get("timestamp")
 
         if (
-            replay_counter is None
-            or not source_mac
+            not source_mac
             or not destination_mac
+            or replay_counter is None
             or timestamp is None
         ):
             continue
 
-        source_mac = source_mac.lower()
-        destination_mac = destination_mac.lower()
+        try:
+            timestamp = float(timestamp)
+        except (TypeError, ValueError):
+            continue
 
-        # Aynı iki cihaz arasındaki trafiği
-        # tek ilişki altında topluyoruz.
+        source_mac = str(source_mac).lower()
+        destination_mac = str(destination_mac).lower()
+
         mac_pair = tuple(
             sorted(
                 (
                     source_mac,
-                    destination_mac
+                    destination_mac,
                 )
             )
         )
 
         key = (
             mac_pair,
-            replay_counter
+            replay_counter,
         )
 
-        message3_activity[
-            key
-        ].append(
-            float(timestamp)
+        groups[key].append(
+            {
+                "timestamp": timestamp,
+                "source_mac": source_mac,
+                "destination_mac": destination_mac,
+                "nonce": packet.get("eapol_nonce"),
+                "bssid": packet.get("bssid"),
+            }
         )
 
     alerts = []
 
-    for key, timestamps in (
-        message3_activity.items()
-    ):
+    for (
+        mac_pair,
+        replay_counter,
+    ), events in groups.items():
 
-        if (
-            len(timestamps)
-            < retransmission_threshold
-        ):
+        if len(events) < minimum_group_count:
             continue
 
-        timestamps.sort()
-
-        left = 0
-        best_count = 0
-        best_start = None
-        best_end = None
-
-        for right in range(
-            len(timestamps)
-        ):
-
-            while (
-                timestamps[right]
-                - timestamps[left]
-                > time_window
-            ):
-                left += 1
-
-            current_count = (
-                right - left + 1
-            )
-
-            if current_count > best_count:
-
-                best_count = (
-                    current_count
-                )
-
-                best_start = (
-                    timestamps[left]
-                )
-
-                best_end = (
-                    timestamps[right]
-                )
-
-        if (
-            best_count
-            < retransmission_threshold
-        ):
-            continue
-
-        (
-            mac_pair,
-            replay_counter
-        ) = key
-
-        first_mac, second_mac = (
-            mac_pair
+        events.sort(
+            key=lambda event: event["timestamp"]
         )
 
-        alerts.append({
-            "type": "KRACK_ATTACK",
+        close_pair = None
 
-            "source_ip": None,
+        for index in range(1, len(events)):
+            previous = events[index - 1]
+            current = events[index]
 
-            "risk_score": 14,
+            delta = (
+                current["timestamp"]
+                - previous["timestamp"]
+            )
 
-            "first_seen": best_start,
-
-            "last_seen": best_end,
-
-            "packet_count": best_count,
-
-            "reason": (
-                "WPA 4-way handshake sırasında "
-                "aynı Replay Counter değerine sahip "
-                f"{best_count} adet EAPOL-Key "
-                "Message 3 tespit edildi"
-            ),
-
-            "evidence": [
-                f"MAC 1: {first_mac}",
-                f"MAC 2: {second_mac}",
-                (
-                    "Replay Counter: "
-                    f"{replay_counter}"
-                ),
-                (
-                    "Tekrarlanan Message 3: "
-                    f"{best_count}"
+            if delta <= close_repeat_window:
+                close_pair = (
+                    previous,
+                    current,
+                    delta,
                 )
-            ]
-        })
+                break
+
+        if close_pair is None:
+            continue
+
+        first_event, second_event, delta = close_pair
+
+        bssids = sorted(
+            {
+                str(event.get("bssid")).lower()
+                for event in events
+                if event.get("bssid")
+            }
+        )
+
+        evidence = [
+            f"MAC 1: {mac_pair[0]}",
+            f"MAC 2: {mac_pair[1]}",
+            f"Replay Counter: {replay_counter}",
+            (
+                "Total repeated Message 3 count: "
+                f"{len(events)}"
+            ),
+            (
+                "Closest suspicious repeat: "
+                f"{delta:.3f} seconds"
+            ),
+        ]
+
+        nonce_1 = first_event.get("nonce")
+        nonce_2 = second_event.get("nonce")
+
+        if nonce_1:
+            evidence.append(
+                f"Nonce 1: {nonce_1}"
+            )
+
+        if nonce_2:
+            evidence.append(
+                f"Nonce 2: {nonce_2}"
+            )
+
+        if (
+            nonce_1
+            and nonce_2
+            and nonce_1 != nonce_2
+        ):
+            evidence.append(
+                "Nonce changed while Replay Counter remained the same"
+            )
+
+        if bssids:
+            evidence.append(
+                "BSSID: "
+                + ", ".join(bssids)
+            )
+
+        alerts.append(
+            {
+                "type": "KRACK_ATTACK",
+                "source_ip": None,
+                "destination_ip": None,
+                "risk_score": 14,
+                "confidence": 0.95,
+                "first_seen": first_event["timestamp"],
+                "last_seen": second_event["timestamp"],
+                "packet_count": len(events),
+                "reason": (
+                    "Aynı AP/istemci ilişkisinde ve aynı Replay Counter ile "
+                    "tekrarlanan WPA Message 3 frameleri tespit edildi; "
+                    "yakın zamanlı tekrar key reinstallation (KRACK) göstergesi."
+                ),
+                "evidence": evidence,
+            }
+        )
 
     return alerts
