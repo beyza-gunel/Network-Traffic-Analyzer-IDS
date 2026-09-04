@@ -146,6 +146,79 @@ def _parse_http_from_raw(
         pass
 
 
+
+WLAN_TYPE_NAMES = {
+    0: "Management",
+    1: "Control",
+    2: "Data",
+    3: "Extension",
+}
+
+
+WLAN_MANAGEMENT_SUBTYPES = {
+    0: "Association Request",
+    1: "Association Response",
+    2: "Reassociation Request",
+    3: "Reassociation Response",
+    4: "Probe Request",
+    5: "Probe Response",
+    8: "Beacon",
+    9: "ATIM",
+    10: "Disassociation",
+    11: "Authentication",
+    12: "Deauthentication",
+    13: "Action",
+}
+
+
+WLAN_CONTROL_SUBTYPES = {
+    8: "Block Ack Request",
+    9: "Block Ack",
+    10: "PS-Poll",
+    11: "RTS",
+    12: "CTS",
+    13: "ACK",
+    14: "CF-End",
+    15: "CF-End + CF-Ack",
+}
+
+
+WLAN_DATA_SUBTYPES = {
+    0: "Data",
+    4: "Null Data",
+    8: "QoS Data",
+    12: "QoS Null",
+}
+
+
+def _get_wlan_frame_name(
+    wlan_type,
+    wlan_subtype,
+):
+    if wlan_type == 0:
+        return WLAN_MANAGEMENT_SUBTYPES.get(
+            wlan_subtype,
+            f"Management subtype {wlan_subtype}",
+        )
+
+    if wlan_type == 1:
+        return WLAN_CONTROL_SUBTYPES.get(
+            wlan_subtype,
+            f"Control subtype {wlan_subtype}",
+        )
+
+    if wlan_type == 2:
+        return WLAN_DATA_SUBTYPES.get(
+            wlan_subtype,
+            f"Data subtype {wlan_subtype}",
+        )
+
+    return (
+        f"802.11 type {wlan_type} "
+        f"subtype {wlan_subtype}"
+    )
+
+
 def parse_packet(packet):
     packet_data = {
         # -------------------------------------------------
@@ -154,6 +227,8 @@ def parse_packet(packet):
         "wlan_type": None,
         "wlan_subtype": None,
         "wlan_protected": None,
+        "wlan_frame_category": None,
+        "wlan_frame_name": None,
         "wlan_addr1": None,
         "wlan_addr2": None,
         "wlan_addr3": None,
@@ -272,6 +347,24 @@ def parse_packet(packet):
         packet_data[
             "wlan_subtype"
         ] = wlan_subtype
+
+        packet_data[
+            "protocol"
+        ] = "802.11"
+
+        packet_data[
+            "wlan_frame_category"
+        ] = WLAN_TYPE_NAMES.get(
+            wlan_type,
+            "Unknown",
+        )
+
+        packet_data[
+            "wlan_frame_name"
+        ] = _get_wlan_frame_name(
+            wlan_type,
+            wlan_subtype,
+        )
 
         packet_data[
             "wlan_addr1"
@@ -428,6 +521,16 @@ def parse_packet(packet):
         packet_data[
             "eapol"
         ] = True
+
+        if (
+            packet_data[
+                "application_protocol"
+            ]
+            is None
+        ):
+            packet_data[
+                "application_protocol"
+            ] = "EAPOL"
 
         key_layer = (
             packet.getlayer(
