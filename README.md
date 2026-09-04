@@ -1,82 +1,77 @@
-# Network Traffic Analyzer & Intrusion Detection System
+# 🛡️ Network Traffic Analyzer & IDS
 
-Bu proje, PCAP/PCAPNG dosyalarındaki ağ trafiğini analiz etmek, normal ve şüpheli ağ davranışlarını ayırt etmek ve belirlenen güvenlik kurallarına göre saldırı belirtilerini tespit etmek amacıyla geliştirilmiş masaüstü tabanlı bir Network Traffic Analyzer ve Network Intrusion Detection System (NIDS) uygulamasıdır.
+**PCAP Intelligence • Multi-Layer Detection • Risk Correlation • Flow Analytics**
 
-Uygulama ağ paketlerini ayrıştırır, trafik istatistiklerini çıkarır, saldırı tespit kurallarını çalıştırır, bulunan güvenlik olaylarını risk puanlarıyla değerlendirir ve sonuçları grafik arayüz üzerinden kullanıcıya sunar.
+Masaüstü tabanlı profesyonel bir **Network Traffic Analyzer & Intrusion Detection System (NTA/IDS)** uygulamasıdır.
+
+> ⚠️ **Etik Kullanım:** Bu proje eğitim ve kontrollü laboratuvar kullanımı için geliştirilmiştir. Yalnızca sahibi olduğunuz veya analiz etme izniniz bulunan ağ kayıtları üzerinde kullanılmalıdır.
 
 ---
 
-## Proje Mimarisi
+## ✨ Proje Özeti
+
+Uygulama `.pcap` ve `.pcapng` ağ kayıtlarını analiz eder; paket ve flow seviyesinde trafik bilgilerini çıkarır, klasik ve kablosuz saldırıları tespit eder, risk skorunu hesaplar ve sonuçları profesyonel bir PySide6 dashboard üzerinde gösterir.
+
+### ✅ Tamamlanan Ana Özellikler
+
+- ✅ PCAP / PCAPNG analizi
+- ✅ Packet Parser
+- ✅ Traffic Analyzer
+- ✅ Flow Analyzer
+- ✅ Detection Engine
+- ✅ Risk Correlation Engine
+- ✅ Wireless IDS
+- ✅ Timeline
+- ✅ IP Analysis
+- ✅ Network Graph
+- ✅ JSON / HTML / PDF raporlama
+- ✅ Background Worker + Progress Bar
+- ✅ 16/16 Regression Test
+
+---
+
+## 🧭 Proje Mimarisi
 
 ```text
-PCAP / PCAPNG
-      ↓
-Packet Parser
-      ↓
-Traffic Analyzer
-      ↓
-Detection Engine
-      ↓
-Risk Engine
-      ↓
-Normal / Suspicious Traffic
-      ↓
-Alert
-      ↓
-Dashboard
+PCAP / NETWORK TRAFFIC
+          ↓
+     PACKET PARSER
+          ↓
+    TRAFFIC ANALYZER
+          ↓
+      FLOW ANALYZER
+          ↓
+    DETECTION ENGINE
+          ↓
+       RISK ENGINE
+          ↓
+ NORMAL / SUSPICIOUS
+          ↓
+         ALERT
+          ↓
+       DASHBOARD
+          ↓
+         REPORT
 ```
 
-Proje, modüler ve genişletilebilir bir mimari kullanılarak geliştirilmiştir.
+---
+
+## 📦 PCAP Analizi
+
+Uygulama:
+
+- `.pcap` ve `.pcapng` dosyalarını analiz eder.
+- Büyük dosyalarda `PcapReader` ile streaming okuma yapar.
+- Analizi `QThread` üzerinden arka planda çalıştırır.
+- Analiz sırasında progress bar gösterir.
+- Bozuk ve geçersiz PCAP dosyalarını kontrol eder.
+- Malformed paketlerde uygulamanın tamamen çökmesini engeller.
 
 ---
 
-## Kullanılan Teknolojiler
+## 🔬 Paket Seviyesi Bilgiler
 
-- Python
-- Scapy
-- PySide6
-- Pandas
-- Matplotlib
-- NetworkX
-
----
-
-## Temel Özellikler
-
-- PCAP ve PCAPNG dosyası seçme
-- Ağ paketlerini ayrıştırma
-- Arka planda PCAP analizi
-- PCAP dosyalarının `PcapReader` ile sıralı okunması
-- Paket tablosu görüntüleme
-- Paket detaylarını görüntüleme
-- Kaynak IP filtresi
-- Hedef IP filtresi
-- Port filtresi
-- Protokol filtresi
-- Ağ trafik istatistikleri
-- Otomatik saldırı tespiti
-- Risk skoru hesaplama
-- Alarm üretme
-- LOW / MEDIUM / HIGH / CRITICAL risk seviyeleri
-- İlişkili güvenlik olaylarının korelasyon ile değerlendirilmesi
-
----
-
-## Desteklenen Protokoller ve Paket Bilgileri
-
-Uygulama aşağıdaki ağ protokollerini ve paket özelliklerini analiz edebilmektedir:
-
-- Ethernet
-- ARP
-- IPv4
-- TCP
-- UDP
-- ICMP
-- DNS
-- IEEE 802.11 Wi-Fi
-- EAPOL / WPA Handshake
-
-Paketlerden çıkarılabilen başlıca bilgiler:
+Uygulama mümkün olan paketlerde şu bilgileri çıkarır:
 
 - Timestamp
 - Source IP
@@ -89,276 +84,343 @@ Paketlerden çıkarılabilen başlıca bilgiler:
 - DNS Query
 - Source MAC
 - Destination MAC
-- ARP bilgileri
-- ICMP Type / Code
-- WLAN Type / Subtype
-- SSID
 - BSSID
-- Wi-Fi Channel
-- EAPOL Replay Counter
-- EAPOL Key bilgileri
+- 802.11 Frame Type
+- HTTP / HTTPS / DNS bilgileri
+
+### Desteklenen Trafik Türleri
+
+`TCP` • `UDP` • `ICMP` • `ARP` • `DNS` • `HTTP` • `HTTPS` • `802.11 Wireless` • `EAPOL`
 
 ---
 
-## Saldırı Tespit Modülleri
+## 🖥️ Security Overview Dashboard
 
-Uygulamada farklı ağ ve kablosuz ağ saldırıları için bağımsız detector modülleri bulunmaktadır.
+Dashboard üzerinde şu bilgiler gösterilir:
 
-### Network Attack Detection
+- 📦 Total Packets
+- 🌐 Unique IPs
+- 🔌 Unique Ports
+- 🔁 TCP Connections
+- 📡 UDP Traffic
+- 🚨 Critical Alerts
+- ⚠️ Suspicious Traffic
+- 🛡️ Risk Level + Risk Score
 
-- Port Scan Detection
-- SYN Scan Detection
-- SYN Flood Detection
-- ICMP Flood Detection
-- Smurf Attack Detection
-- ARP Spoofing / MITM Detection
-- DNS Anomaly Detection
-- Unusual Port Activity Detection
-- Suspicious Traffic Burst Detection
+### Risk Seviyeleri
 
-### Wireless Attack Detection
-
-- Deauthentication Attack Detection
-- Disassociation Attack Detection
-- Rogue Access Point Detection
-- Evil Twin Detection
-- KRACK Attack Detection
-
----
-
-## Risk Engine
-
-Detection Engine tarafından oluşturulan alarmlar Risk Engine tarafından değerlendirilir.
-
-| Risk Seviyesi | Açıklama |
+| Seviye | Anlamı |
 |---|---|
-| LOW | Normal veya düşük riskli trafik |
-| MEDIUM | İncelenmesi gereken şüpheli davranış |
-| HIGH | Güçlü saldırı göstergesi |
-| CRITICAL | Birden fazla veya yüksek önem dereceli saldırı göstergesi |
-
-Risk Engine, aynı olaydan kaynaklanan bazı alarmları korelasyon yöntemiyle değerlendirerek risk puanının gereksiz şekilde yükselmesini önlemeye çalışır.
-
-Örnek:
-
-```text
-SYN Flood
-+
-Traffic Burst
-↓
-Correlated Risk
-```
-
-ve
-
-```text
-Evil Twin
-+
-Rogue AP
-↓
-Correlated Risk
-```
+| 🟢 LOW | Düşük risk |
+| 🟡 MEDIUM | İncelenmesi gereken trafik |
+| 🟠 HIGH | Güçlü saldırı göstergesi |
+| 🔴 CRITICAL | Çok yüksek / korele risk |
 
 ---
 
-## Gerçek PCAP Testleri
+## 🛡️ Detection Engine
 
-Uygulama gerçek saldırı trafiği içeren PCAP dosyaları üzerinde test edilmiştir.
+### Klasik Ağ Saldırıları
 
-Test edilen başlıca saldırılar:
+| Detection | Açıklama |
+|---|---|
+| PORT_SCAN | Çok sayıda farklı hedef porta erişim |
+| SYN_SCAN | Pure SYN tabanlı port tarama |
+| SYN_FLOOD | Yoğun SYN trafiği |
+| ICMP_FLOOD | Yoğun ICMP trafiği |
+| SMURF_ATTACK | Broadcast hedefli ICMP Echo |
+| ARP_SPOOFING | Çakışan IP → MAC eşlemeleri |
+| UNUSUAL_PORT_ACTIVITY | Şüpheli port kullanımı |
+| DNS_ANOMALY | Anormal DNS sorgu davranışı |
+| TRAFFIC_BURST | Kısa sürede olağan dışı trafik artışı |
 
-- SYN Flood
-- Smurf Attack
-- ARP Spoofing / MITM
-- Deauthentication
-- Rogue AP
-- Evil Twin
-- KRACK
+### 📶 Wireless IDS
 
-Gerçek saldırı PCAP dosyaları boyutları ve veri kaynağı nedeniyle GitHub deposuna dahil edilmemektedir.
+| Detection | Açıklama |
+|---|---|
+| DEAUTH_ATTACK | Deauthentication saldırısı |
+| DISASSOCIATION_ATTACK | Disassociation saldırısı |
+| ROGUE_AP | Şüpheli Access Point |
+| EVIL_TWIN | Sahte / kopya Access Point |
+| KRACK_ATTACK | WPA Message 3 / Replay Counter tekrarları |
 
 ---
 
-## Sentetik Test PCAP Dosyaları
+## 🔐 KRACK Detection
 
-Detector modüllerinin kontrollü şekilde test edilebilmesi için sentetik PCAP dosyaları oluşturulmuştur.
-
-Test senaryoları arasında:
-
-- Normal Traffic
-- Port Scan
-- SYN Scan
-- ICMP Flood
-- DNS Anomaly
-- Traffic Burst
-- Combined Attack
-- Disassociation Attack
-
-bulunmaktadır.
-
-Test PCAP dosyaları:
+KRACK detector şu koşulları birlikte değerlendirir:
 
 ```text
-data/test_pcaps/
+Aynı AP / istemci MAC çifti
+        +
+Aynı Replay Counter
+        +
+Capture boyunca en az 3 Message 3
+        +
+En az iki Message 3'ün 15 saniye içinde tekrarı
+        ↓
+KRACK_ATTACK
 ```
 
-dizini altında bulunmaktadır.
+Gerçek `krack.pcap` üzerinde saldırı tespit edilmiştir.
+
+`ewil.pcap` Evil Twin örneğinde ise yanlış KRACK alarmı oluşmadığı doğrulanmıştır.
 
 ---
 
-## Proje Yapısı
+## 🔁 Flow Analysis
+
+Flows ekranında:
+
+- Protocol
+- Source
+- Destination
+- Source Port
+- Destination Port
+- Packet Count
+- Byte Count
+- Duration
+- Forward Packets
+- Reverse Packets
+- Application Protocol
+- NORMAL / SUSPICIOUS
+
+bilgileri gösterilir.
+
+---
+
+## 📊 Analiz Ekranları
+
+### 📦 Packets
+
+Paket tablosu ve detay görünümü bulunur.
+
+Filtreler:
+
+- Source IP
+- Destination IP
+- Port
+- Protocol
+- Başlangıç tarihi / saati
+- Bitiş tarihi / saati
+
+### 🚨 Alerts
+
+Alarm detaylarında:
+
+- Alert Type
+- Risk Level
+- Source Entity
+- Destination Entity
+- Risk Score
+- Confidence
+- Packet Count
+- Reason
+- Evidence
+
+gösterilir.
+
+### ⏱️ Timeline
+
+Trafik yoğunluğu ve güvenlik olayları zaman çizgisi üzerinde gösterilir.
+
+### 🌐 IP Analysis
+
+Her IP için:
+
+- Packet Count
+- Protocols
+- Ports
+- Connections
+- Risk Score
+- Alert Count
+- NORMAL / SUSPICIOUS
+
+bilgileri hesaplanır.
+
+### 🕸️ Network Graph
+
+- IP trafiğinde IP tabanlı graph
+- Wireless trafikte MAC / BSSID tabanlı graph
+- Şüpheli varlıkların görsel ayrımı
+
+### 🔁 Flows
+
+Çift yönlü network flow bilgileri gösterilir.
+
+---
+
+## 📄 Raporlama
+
+Analiz sonuçları şu formatlarda dışa aktarılabilir:
+
+- 📄 JSON
+- 🌐 HTML
+- 📕 PDF
+
+---
+
+## ✅ Final Regression Test
+
+Test komutu:
+
+```powershell
+python run_regression_tests.py
+```
+
+Final sonuç:
 
 ```text
-NetworkTrafficAnalyzer/
-│
-├── main.py
-├── README.md
-├── requirements.txt
-│
-├── core/
-│   ├── packet_parser.py
-│   ├── traffic_analyzer.py
-│   ├── detection_engine.py
-│   └── risk_engine.py
-│
-├── detectors/
-│   ├── port_scan.py
-│   ├── syn_scan.py
-│   ├── syn_flood.py
-│   ├── icmp_flood.py
-│   ├── smurf.py
-│   ├── arp_spoofing.py
-│   ├── unusual_port.py
-│   ├── dns_anomaly.py
-│   ├── traffic_burst.py
-│   ├── deauth.py
-│   ├── disassociation.py
-│   ├── rogue_ap.py
-│   ├── evil_twin.py
-│   └── krack.py
-│
-├── models/
-│   ├── packet.py
-│   ├── alert.py
-│   ├── analysis_result.py
-│   └── ip_info.py
-│
-├── services/
-│   └── analysis_service.py
-│
-├── workers/
-│   └── analysis_worker.py
-│
-├── ui/
-│   └── main_window.py
-│
-├── utils/
-│   └── runtime_env.py
-│
-└── data/
-    ├── test_pcaps/
-    └── real_pcaps/
+PASS: 16
+FAIL: 0
+SKIPPED: 0
 ```
+
+### Sentetik Testler
+
+| Senaryo | Sonuç |
+|---|---|
+| Normal Web Traffic | ✅ LOW / alarm yok |
+| Port Scan | ✅ PORT_SCAN / HIGH |
+| SYN Scan | ✅ SYN_SCAN / HIGH |
+| ICMP Flood | ✅ ICMP_FLOOD / HIGH |
+| DNS Anomaly | ✅ DNS_ANOMALY / MEDIUM |
+| Traffic Burst | ✅ TRAFFIC_BURST / MEDIUM |
+| Combined Attack | ✅ CRITICAL |
+| Disassociation | ✅ HIGH |
+
+### Gerçek PCAP Testleri
+
+| Senaryo | Sonuç |
+|---|---|
+| SYN Flood | ✅ SYN_FLOOD |
+| Smurf | ✅ SMURF_ATTACK |
+| MITM | ✅ ARP_SPOOFING |
+| Deauthentication | ✅ DEAUTH_ATTACK |
+| Rogue AP | ✅ ROGUE_AP |
+| Evil Twin | ✅ EVIL_TWIN |
+| KRACK | ✅ KRACK_ATTACK |
+
+> 📌 Gerçek PCAP dosyaları repository'e eklenmez. `data/real_pcaps/` klasörü `.gitignore` içerisindedir.
 
 ---
 
-## Kurulum
+## 🔒 Güvenlik ve Dayanıklılık
 
-Projeyi bilgisayara klonlayın:
+Projede:
+
+- ✅ PCAP doğrulama
+- ✅ Malformed PCAP hata yönetimi
+- ✅ Streaming packet read
+- ✅ Malformed packet exception handling
+- ✅ File/path validation
+- ✅ Background worker thread
+- ✅ Kontrollü logging
+
+uygulanmıştır.
+
+---
+
+## 🚀 Kurulum
+
+### 1. Repository'i klonlayın
 
 ```bash
 git clone https://github.com/beyza-gunel/Network-Traffic-Analyzer-IDS.git
-```
-
-Proje dizinine girin:
-
-```bash
 cd Network-Traffic-Analyzer-IDS
 ```
 
-Sanal ortam oluşturun:
-
-```bash
-python -m venv venv
-```
-
-Windows PowerShell üzerinde sanal ortamı aktif edin:
+### 2. Virtual Environment oluşturun
 
 ```powershell
+python -m venv venv
 .\venv\Scripts\Activate.ps1
 ```
 
-Gerekli paketleri yükleyin:
+PowerShell engeli varsa:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\venv\Scripts\Activate.ps1
+```
+
+### 3. Bağımlılıkları yükleyin
 
 ```bash
 pip install -r requirements.txt
 ```
 
----
-
-## Uygulamayı Çalıştırma
-
-Projenin ana dizininde:
+### 4. Uygulamayı çalıştırın
 
 ```bash
 python main.py
 ```
 
-komutu çalıştırılır.
+---
 
-Ardından:
+## 🎮 Kullanım
 
-1. `PCAP DOSYASI SEÇ` butonu ile `.pcap` veya `.pcapng` dosyası seçilir.
-2. `ANALİZİ BAŞLAT` butonuna basılır.
-3. Paketler arka planda analiz edilir.
-4. Trafik istatistikleri hesaplanır.
-5. Detection Engine güvenlik kurallarını çalıştırır.
-6. Risk Engine genel risk seviyesini belirler.
-7. Paketler ve güvenlik alarmları arayüzde görüntülenir.
+1. **PCAP DOSYASI SEÇ**
+2. `.pcap` veya `.pcapng` dosyasını seç
+3. **ANALİZİ BAŞLAT**
+4. Progress bar üzerinden durumu takip et
+5. Dashboard ve analiz sekmelerini incele
+6. İstersen JSON / HTML / PDF rapor oluştur
 
 ---
 
-## Performans
+## 🗂️ Proje Yapısı
 
-PCAP dosyalarının işlenmesinde Scapy `PcapReader` kullanılmaktadır.
-
-Paketlerin sıralı olarak okunması, büyük PCAP dosyalarında Scapy paketlerinin tamamının aynı anda belleğe alınmasını önlemeye yardımcı olur.
-
-Analiz işlemi PySide6 `QThread` tabanlı Worker mimarisi ile kullanıcı arayüzünden ayrılmıştır.
-
-Bu sayede uzun süren PCAP analizlerinin GUI ana iş parçacığını doğrudan bloklaması önlenmektedir.
+```text
+NetworkTrafficAnalyzer/
+│
+├── main.py
+├── requirements.txt
+├── README.md
+├── run_regression_tests.py
+│
+├── core/
+├── detectors/
+├── models/
+├── services/
+├── workers/
+├── ui/
+├── utils/
+│
+└── data/
+    ├── test_pcaps/
+    └── real_pcaps/   # gitignored
+```
 
 ---
 
-## Güvenlik ve Hata Yönetimi
+## 🧰 Kullanılan Teknolojiler
 
-Uygulamada:
-
-- Hatalı paketlerin kontrollü şekilde atlanması
-- PCAP okuma hatalarının yakalanması
-- Aynı anda birden fazla analiz başlatılmasının engellenmesi
-- PCAP paketlerinin sıralı okunması
-- Analiz işlemlerinin ayrı Worker Thread üzerinde çalıştırılması
-
-gibi kararlılık ve hata yönetimi önlemleri bulunmaktadır.
+- Python
+- PySide6
+- Scapy
+- Matplotlib
+- NetworkX
+- Pandas
 
 ---
 
-## Proje Durumu
+## 🏁 Proje Durumu
 
-Projenin temel PCAP analiz, trafik analiz, saldırı tespit ve risk değerlendirme altyapısı tamamlanmıştır.
+### ✅ FINAL APPLICATION COMPLETED
 
-Geliştirme sürecinin sonraki aşamalarında:
+- ✅ Professional Dashboard
+- ✅ Multi-Layer IDS
+- ✅ Wireless IDS
+- ✅ Risk Correlation
+- ✅ Flow Analysis
+- ✅ JSON / HTML / PDF Reports
+- ✅ 16/16 Regression Test
 
-- Traffic Timeline
-- IP Analysis
-- Network Connection Graph
-- Gelişmiş alarm filtreleme
-- Tarih/saat filtreleri
-- Alarm detay ve evidence ekranı
-- JSON / HTML / PDF raporlama
-- Profesyonel dashboard tasarımı
-- Görsel trafik analizleri
-- Final test ve performans iyileştirmeleri
+---
 
-üzerinde çalışılacaktır.
+## ⚖️ Etik Kullanım
+
+Bu yazılım savunma, eğitim ve laboratuvar amaçlıdır.
+
+İzinsiz ağ dinleme, saldırı gerçekleştirme veya üçüncü taraf sistemlerde yetkisiz test amacıyla kullanılmamalıdır.
