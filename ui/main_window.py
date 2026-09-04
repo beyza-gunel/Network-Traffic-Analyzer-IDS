@@ -1,3 +1,4 @@
+from PySide6.QtGui import QColor
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, QDateTime
@@ -2882,9 +2883,7 @@ class MainWindow(QMainWindow):
                     ).upper()
                     == "CRITICAL"
                 ):
-                    item.setForeground(
-                        "#f87171"
-                    )
+                    item.setForeground(QColor("#f87171"))
 
                 self.alert_table.setItem(
                     row,
