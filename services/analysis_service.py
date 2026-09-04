@@ -7,6 +7,12 @@ from core.flow_analyzer import analyze_flows
 from core.detection_engine import run_detection
 from core.risk_engine import calculate_risk
 
+from utils.security import validate_pcap_file
+from utils.app_logger import (
+    get_logger,
+    safe_file_label,
+)
+
 from models.alert import Alert
 from models.analysis_result import AnalysisResult
 
@@ -126,12 +132,32 @@ class AnalysisService:
         self,
         file_path,
     ):
+        logger = get_logger()
+
+        validation = validate_pcap_file(
+            file_path
+        )
+
+        validated_path = str(
+            validation.path
+        )
+
+        logger.info(
+            "Analysis started: %s | "
+            "format=%s | size=%d",
+            safe_file_label(
+                validated_path
+            ),
+            validation.format_name,
+            validation.size_bytes,
+        )
+
         started_at = (
             time.perf_counter()
         )
 
         packets = load_pcap(
-            file_path
+            validated_path
         )
 
         statistics = analyze_traffic(
@@ -191,12 +217,12 @@ class AnalysisService:
             or 0
         )
 
-        return AnalysisResult(
-            file_path=str(
-                file_path
+        result = AnalysisResult(
+            file_path=(
+                validated_path
             ),
             file_name=Path(
-                file_path
+                validated_path
             ).name,
             total_packets=(
                 total_packets
@@ -232,3 +258,21 @@ class AnalysisService:
                 analysis_duration
             ),
         )
+
+        logger.info(
+            "Analysis completed: %s | "
+            "packets=%d | alerts=%d | "
+            "risk=%s | duration=%.3f",
+            safe_file_label(
+                validated_path
+            ),
+            result.total_packets,
+            len(
+                result.alerts
+            ),
+            result.risk_level,
+            result.analysis_duration,
+        )
+
+        return result
+

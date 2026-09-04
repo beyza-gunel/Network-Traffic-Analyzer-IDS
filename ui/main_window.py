@@ -36,6 +36,11 @@ from services.report_service import (
     export_html,
     export_pdf,
 )
+from utils.security import (
+    PcapValidationError,
+    validate_pcap_file,
+    format_file_size,
+)
 
 
 class MainWindow(QMainWindow):
@@ -714,12 +719,49 @@ class MainWindow(QMainWindow):
         )
 
         if file_path:
-            self.selected_file = (
-                file_path
+            try:
+                validation = (
+                    validate_pcap_file(
+                        file_path
+                    )
+                )
+
+            except PcapValidationError as error:
+                self.selected_file = None
+
+                QMessageBox.warning(
+                    self,
+                    "Geçersiz PCAP Dosyası",
+                    str(
+                        error
+                    ),
+                )
+
+                return
+
+            self.selected_file = str(
+                validation.path
             )
+
             self.file_label.setText(
-                file_path
+                self.selected_file
             )
+
+            if validation.is_large:
+                QMessageBox.information(
+                    self,
+                    "Büyük PCAP Dosyası",
+                    (
+                        "Seçilen dosya büyük bir "
+                        "PCAP dosyasıdır.\n\n"
+                        f"Boyut: "
+                        f"{format_file_size(validation.size_bytes)}\n"
+                        "Dosya PcapReader ile sıralı "
+                        "olarak okunacaktır. Analiz "
+                        "süresi dosya boyutuna göre "
+                        "uzayabilir."
+                    ),
+                )
 
     def start_analysis(
         self,
@@ -729,6 +771,21 @@ class MainWindow(QMainWindow):
                 self,
                 "Uyarı",
                 "Lütfen önce bir PCAP dosyası seçin.",
+            )
+            return
+
+        try:
+            validate_pcap_file(
+                self.selected_file
+            )
+
+        except PcapValidationError as error:
+            QMessageBox.warning(
+                self,
+                "PCAP Doğrulama Hatası",
+                str(
+                    error
+                ),
             )
             return
 

@@ -1,6 +1,18 @@
 from utils.runtime_env import configure_runtime
+from utils.app_logger import (
+    get_logger,
+    safe_file_label,
+)
 
 configure_runtime()
+
+logger = get_logger()
+
+
+class PcapReadError(
+    RuntimeError
+):
+    pass
 
 from scapy.all import (
     Ether,
@@ -775,6 +787,17 @@ def parse_packet(packet):
 def load_pcap(file_path):
     parsed_packets = []
 
+    skipped_packets = 0
+
+    file_label = safe_file_label(
+        file_path
+    )
+
+    logger.info(
+        "PCAP parsing started: %s",
+        file_label,
+    )
+
     try:
         with PcapReader(
             file_path
@@ -793,11 +816,22 @@ def load_pcap(file_path):
                         )
                     )
 
-                except Exception as error:
-                    print(
-                        "Bir paket işlenemedi:",
-                        error,
-                    )
+                except Exception:
+                    skipped_packets += 1
+
+                    # Paket payload'u veya hassas veri
+                    # loglanmaz. Yalnız sayaç tutulur.
+                    if (
+                        skipped_packets
+                        <= 5
+                    ):
+                        logger.warning(
+                            "Malformed packet skipped "
+                            "while parsing %s "
+                            "(packet number: %d)",
+                            file_label,
+                            packet_number,
+                        )
 
                 if (
                     packet_number
@@ -815,13 +849,28 @@ def load_pcap(file_path):
             "paket"
         )
 
+        logger.info(
+            "PCAP parsing completed: %s | "
+            "parsed=%d | skipped=%d",
+            file_label,
+            len(
+                parsed_packets
+            ),
+            skipped_packets,
+        )
+
         return parsed_packets
 
     except Exception as error:
-        print(
-            "PCAP dosyası okunurken "
-            "hata oluştu:",
-            error,
+        logger.error(
+            "PCAP parsing failed: %s | %s",
+            file_label,
+            type(
+                error
+            ).__name__,
         )
 
-        return []
+        raise PcapReadError(
+            "PCAP dosyası okunamadı veya "
+            "dosya yapısı bozuk."
+        ) from error
