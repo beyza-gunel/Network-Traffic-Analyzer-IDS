@@ -1,4 +1,6 @@
-from PySide6.QtCore import Qt, QThread
+from pathlib import Path
+
+from PySide6.QtCore import Qt, QThread, QDateTime
 from PySide6.QtWidgets import (
     QMainWindow,
     QWidget,
@@ -17,6 +19,8 @@ from PySide6.QtWidgets import (
     QTextEdit,
     QLineEdit,
     QComboBox,
+    QDateTimeEdit,
+    QCheckBox,
 )
 
 from workers.analysis_worker import AnalysisWorker
@@ -24,6 +28,12 @@ from ui.analytics_tabs import (
     TimelineTab,
     IPAnalysisTab,
     NetworkGraphTab,
+)
+from services.report_service import (
+    build_report_data,
+    export_json,
+    export_html,
+    export_pdf,
 )
 
 
@@ -41,6 +51,12 @@ class MainWindow(QMainWindow):
         self.packets = []
         self.displayed_packets = []
         self.alerts = []
+        self.displayed_alerts = []
+
+        self.current_statistics = {}
+        self.current_risk_score = 0
+        self.current_risk_level = "LOW"
+        self.current_risk_breakdown = []
 
         self.setWindowTitle(
             "Network Traffic Analyzer & Intrusion Detection System"
@@ -55,12 +71,20 @@ class MainWindow(QMainWindow):
 
     def create_ui(self):
         central_widget = QWidget()
-        self.setCentralWidget(central_widget)
+        self.setCentralWidget(
+            central_widget
+        )
 
-        main_layout = QVBoxLayout(central_widget)
+        main_layout = QVBoxLayout(
+            central_widget
+        )
 
-        title = QLabel("NETWORK TRAFFIC ANALYZER & IDS")
-        title.setAlignment(Qt.AlignCenter)
+        title = QLabel(
+            "NETWORK TRAFFIC ANALYZER & IDS"
+        )
+        title.setAlignment(
+            Qt.AlignCenter
+        )
         title.setStyleSheet(
             """
             font-size: 24px;
@@ -68,23 +92,63 @@ class MainWindow(QMainWindow):
             padding: 15px;
             """
         )
-        main_layout.addWidget(title)
+        main_layout.addWidget(
+            title
+        )
 
         # -----------------------------------------------------
-        # Dosya seçme / analiz
+        # Dosya / analiz / rapor
         # -----------------------------------------------------
 
         file_layout = QHBoxLayout()
 
-        self.select_file_button = QPushButton("PCAP DOSYASI SEÇ")
-        self.analyze_button = QPushButton("ANALİZİ BAŞLAT")
-        self.file_label = QLabel("Henüz dosya seçilmedi.")
+        self.select_file_button = QPushButton(
+            "PCAP DOSYASI SEÇ"
+        )
+        self.analyze_button = QPushButton(
+            "ANALİZİ BAŞLAT"
+        )
 
-        file_layout.addWidget(self.select_file_button)
-        file_layout.addWidget(self.analyze_button)
-        file_layout.addWidget(self.file_label, 1)
+        self.file_label = QLabel(
+            "Henüz dosya seçilmedi."
+        )
 
-        main_layout.addLayout(file_layout)
+        self.report_format_combo = QComboBox()
+        self.report_format_combo.addItems(
+            [
+                "JSON",
+                "HTML",
+                "PDF",
+            ]
+        )
+
+        self.export_report_button = QPushButton(
+            "RAPORU DIŞA AKTAR"
+        )
+        self.export_report_button.setEnabled(
+            False
+        )
+
+        file_layout.addWidget(
+            self.select_file_button
+        )
+        file_layout.addWidget(
+            self.analyze_button
+        )
+        file_layout.addWidget(
+            self.file_label,
+            1,
+        )
+        file_layout.addWidget(
+            self.report_format_combo
+        )
+        file_layout.addWidget(
+            self.export_report_button
+        )
+
+        main_layout.addLayout(
+            file_layout
+        )
 
         self.select_file_button.clicked.connect(
             self.select_pcap_file
@@ -92,19 +156,18 @@ class MainWindow(QMainWindow):
         self.analyze_button.clicked.connect(
             self.start_analysis
         )
+        self.export_report_button.clicked.connect(
+            self.export_report
+        )
 
-        # -----------------------------------------------------
-        # Dashboard istatistikleri
-        # -----------------------------------------------------
-
-        self.create_statistics_area(main_layout)
-
-        # -----------------------------------------------------
-        # Sekmeler
-        # -----------------------------------------------------
+        self.create_statistics_area(
+            main_layout
+        )
 
         self.tabs = QTabWidget()
-        main_layout.addWidget(self.tabs)
+        main_layout.addWidget(
+            self.tabs
+        )
 
         self.create_packet_tab()
         self.create_alert_tab()
@@ -126,8 +189,6 @@ class MainWindow(QMainWindow):
             "Network Graph",
         )
 
-        # Büyük PCAP'lerde grafiklerin hepsini aynı anda
-        # hesaplamamak için lazy loading kullanıyoruz.
         self.analytics_loaded = {
             "timeline": False,
             "ip": False,
@@ -142,7 +203,10 @@ class MainWindow(QMainWindow):
     # DASHBOARD
     # =========================================================
 
-    def create_statistics_area(self, main_layout):
+    def create_statistics_area(
+        self,
+        main_layout,
+    ):
         statistics_group = QGroupBox(
             "Traffic Statistics"
         )
@@ -152,14 +216,30 @@ class MainWindow(QMainWindow):
             statistics_layout
         )
 
-        self.total_packets_label = QLabel("0")
-        self.unique_ips_label = QLabel("0")
-        self.unique_ports_label = QLabel("0")
-        self.tcp_connections_label = QLabel("0")
-        self.udp_packets_label = QLabel("0")
-        self.critical_alerts_label = QLabel("0")
-        self.suspicious_label = QLabel("0")
-        self.risk_label = QLabel("LOW")
+        self.total_packets_label = QLabel(
+            "0"
+        )
+        self.unique_ips_label = QLabel(
+            "0"
+        )
+        self.unique_ports_label = QLabel(
+            "0"
+        )
+        self.tcp_connections_label = QLabel(
+            "0"
+        )
+        self.udp_packets_label = QLabel(
+            "0"
+        )
+        self.critical_alerts_label = QLabel(
+            "0"
+        )
+        self.suspicious_label = QLabel(
+            "0"
+        )
+        self.risk_label = QLabel(
+            "LOW"
+        )
 
         cards = [
             (
@@ -212,7 +292,12 @@ class MainWindow(QMainWindow):
             ),
         ]
 
-        for title, label, row, column in cards:
+        for (
+            title,
+            label,
+            row,
+            column,
+        ) in cards:
             statistics_layout.addWidget(
                 self.create_stat_card(
                     title,
@@ -232,9 +317,13 @@ class MainWindow(QMainWindow):
         value_label,
     ):
         card = QGroupBox()
-        layout = QVBoxLayout(card)
+        layout = QVBoxLayout(
+            card
+        )
 
-        title_label = QLabel(title)
+        title_label = QLabel(
+            title
+        )
         title_label.setAlignment(
             Qt.AlignCenter
         )
@@ -249,8 +338,12 @@ class MainWindow(QMainWindow):
             """
         )
 
-        layout.addWidget(title_label)
-        layout.addWidget(value_label)
+        layout.addWidget(
+            title_label
+        )
+        layout.addWidget(
+            value_label
+        )
 
         return card
 
@@ -258,9 +351,17 @@ class MainWindow(QMainWindow):
     # PACKETS TAB
     # =========================================================
 
-    def create_packet_tab(self):
+    def create_packet_tab(
+        self,
+    ):
         packet_widget = QWidget()
-        layout = QVBoxLayout(packet_widget)
+        layout = QVBoxLayout(
+            packet_widget
+        )
+
+        # -----------------------------------------------------
+        # Temel filtreler
+        # -----------------------------------------------------
 
         filter_layout = QHBoxLayout()
 
@@ -317,7 +418,79 @@ class MainWindow(QMainWindow):
             self.clear_filter_button
         )
 
-        layout.addLayout(filter_layout)
+        layout.addLayout(
+            filter_layout
+        )
+
+        # -----------------------------------------------------
+        # Tarih / saat filtresi
+        # -----------------------------------------------------
+
+        time_filter_layout = QHBoxLayout()
+
+        self.time_filter_check = QCheckBox(
+            "Tarih/Saat filtresi"
+        )
+
+        self.start_time_edit = QDateTimeEdit()
+        self.start_time_edit.setDisplayFormat(
+            "yyyy-MM-dd HH:mm:ss"
+        )
+        self.start_time_edit.setCalendarPopup(
+            True
+        )
+        self.start_time_edit.setEnabled(
+            False
+        )
+
+        self.end_time_edit = QDateTimeEdit()
+        self.end_time_edit.setDisplayFormat(
+            "yyyy-MM-dd HH:mm:ss"
+        )
+        self.end_time_edit.setCalendarPopup(
+            True
+        )
+        self.end_time_edit.setEnabled(
+            False
+        )
+
+        time_filter_layout.addWidget(
+            self.time_filter_check
+        )
+        time_filter_layout.addWidget(
+            QLabel(
+                "Başlangıç:"
+            )
+        )
+        time_filter_layout.addWidget(
+            self.start_time_edit
+        )
+        time_filter_layout.addWidget(
+            QLabel(
+                "Bitiş:"
+            )
+        )
+        time_filter_layout.addWidget(
+            self.end_time_edit
+        )
+        time_filter_layout.addStretch(
+            1
+        )
+
+        layout.addLayout(
+            time_filter_layout
+        )
+
+        self.time_filter_check.toggled.connect(
+            self.start_time_edit.setEnabled
+        )
+        self.time_filter_check.toggled.connect(
+            self.end_time_edit.setEnabled
+        )
+
+        # -----------------------------------------------------
+        # Paket tablosu
+        # -----------------------------------------------------
 
         self.packet_table = QTableWidget()
 
@@ -354,7 +527,9 @@ class MainWindow(QMainWindow):
         )
 
         self.packet_detail = QTextEdit()
-        self.packet_detail.setReadOnly(True)
+        self.packet_detail.setReadOnly(
+            True
+        )
         self.packet_detail.setPlaceholderText(
             "Detayını görmek için bir pakete tıklayın."
         )
@@ -382,14 +557,87 @@ class MainWindow(QMainWindow):
     # ALERTS TAB
     # =========================================================
 
-    def create_alert_tab(self):
+    def create_alert_tab(
+        self,
+    ):
         alert_widget = QWidget()
-        layout = QVBoxLayout(alert_widget)
+        layout = QVBoxLayout(
+            alert_widget
+        )
+
+        # -----------------------------------------------------
+        # Alert filtreleri
+        # -----------------------------------------------------
+
+        alert_filter_layout = QHBoxLayout()
+
+        self.alert_type_filter = QComboBox()
+        self.alert_type_filter.addItem(
+            "ALL"
+        )
+
+        self.alert_risk_filter = QComboBox()
+        self.alert_risk_filter.addItems(
+            [
+                "ALL",
+                "LOW",
+                "MEDIUM",
+                "HIGH",
+                "CRITICAL",
+            ]
+        )
+
+        self.alert_ip_filter = QLineEdit()
+        self.alert_ip_filter.setPlaceholderText(
+            "Source / Destination IP"
+        )
+
+        self.alert_filter_button = QPushButton(
+            "ALARM FİLTRELE"
+        )
+        self.alert_clear_filter_button = QPushButton(
+            "TEMİZLE"
+        )
+
+        alert_filter_layout.addWidget(
+            QLabel(
+                "Alert Type:"
+            )
+        )
+        alert_filter_layout.addWidget(
+            self.alert_type_filter
+        )
+        alert_filter_layout.addWidget(
+            QLabel(
+                "Risk:"
+            )
+        )
+        alert_filter_layout.addWidget(
+            self.alert_risk_filter
+        )
+        alert_filter_layout.addWidget(
+            self.alert_ip_filter
+        )
+        alert_filter_layout.addWidget(
+            self.alert_filter_button
+        )
+        alert_filter_layout.addWidget(
+            self.alert_clear_filter_button
+        )
+
+        layout.addLayout(
+            alert_filter_layout
+        )
+
+        # -----------------------------------------------------
+        # Alert tablosu
+        # -----------------------------------------------------
 
         self.alert_table = QTableWidget()
 
         columns = [
             "Alert Type",
+            "Level",
             "Source IP",
             "Destination IP",
             "Risk Score",
@@ -417,7 +665,9 @@ class MainWindow(QMainWindow):
         )
 
         self.alert_detail = QTextEdit()
-        self.alert_detail.setReadOnly(True)
+        self.alert_detail.setReadOnly(
+            True
+        )
         self.alert_detail.setPlaceholderText(
             "Detayını görmek için bir alarma tıklayın."
         )
@@ -426,6 +676,12 @@ class MainWindow(QMainWindow):
             self.alert_detail
         )
 
+        self.alert_filter_button.clicked.connect(
+            self.apply_alert_filter
+        )
+        self.alert_clear_filter_button.clicked.connect(
+            self.clear_alert_filter
+        )
         self.alert_table.cellClicked.connect(
             self.show_alert_detail
         )
@@ -439,7 +695,9 @@ class MainWindow(QMainWindow):
     # DOSYA SEÇME / ANALİZ
     # =========================================================
 
-    def select_pcap_file(self):
+    def select_pcap_file(
+        self,
+    ):
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "PCAP Dosyası Seç",
@@ -448,12 +706,16 @@ class MainWindow(QMainWindow):
         )
 
         if file_path:
-            self.selected_file = file_path
+            self.selected_file = (
+                file_path
+            )
             self.file_label.setText(
                 file_path
             )
 
-    def start_analysis(self):
+    def start_analysis(
+        self,
+    ):
         if not self.selected_file:
             QMessageBox.warning(
                 self,
@@ -476,6 +738,10 @@ class MainWindow(QMainWindow):
         self.analyze_button.setEnabled(
             False
         )
+        self.export_report_button.setEnabled(
+            False
+        )
+
         self.statusBar().showMessage(
             "PCAP analizi başlatılıyor..."
         )
@@ -537,8 +803,24 @@ class MainWindow(QMainWindow):
         self,
         result,
     ):
-        self.packets = result.packets
+        self.packets = (
+            result.packets
+        )
         self.displayed_packets = []
+
+        self.current_statistics = dict(
+            result.statistics
+        )
+        self.current_risk_score = (
+            result.risk_score
+        )
+        self.current_risk_level = (
+            result.risk_level
+        )
+        self.current_risk_breakdown = list(
+            result.risk_breakdown
+            or []
+        )
 
         self.alerts = []
 
@@ -578,8 +860,9 @@ class MainWindow(QMainWindow):
             self.alerts
         )
 
-        # Yeni analiz geldiğinde analitik sekmeler
-        # yeniden hesaplanmalıdır.
+        self.configure_time_filter_range()
+        self.refresh_alert_type_filter()
+
         self.analytics_loaded = {
             "timeline": False,
             "ip": False,
@@ -588,6 +871,10 @@ class MainWindow(QMainWindow):
 
         self.on_tab_changed(
             self.tabs.currentIndex()
+        )
+
+        self.export_report_button.setEnabled(
+            True
         )
 
         self.statusBar().showMessage(
@@ -629,7 +916,9 @@ class MainWindow(QMainWindow):
     def on_analysis_thread_finished(
         self,
     ):
-        thread = self.analysis_thread
+        thread = (
+            self.analysis_thread
+        )
 
         self.analysis_worker = None
         self.analysis_thread = None
@@ -638,11 +927,19 @@ class MainWindow(QMainWindow):
             True
         )
 
+        if (
+            self.packets
+            and self.current_statistics
+        ):
+            self.export_report_button.setEnabled(
+                True
+            )
+
         if thread is not None:
             thread.deleteLater()
 
     # =========================================================
-    # ANALYTICS LAZY LOADING
+    # ANALYTICS
     # =========================================================
 
     def on_tab_changed(
@@ -652,12 +949,15 @@ class MainWindow(QMainWindow):
         if not self.packets:
             return
 
-        current_widget = self.tabs.widget(
-            index
+        current_widget = (
+            self.tabs.widget(
+                index
+            )
         )
 
         if (
-            current_widget is self.timeline_tab
+            current_widget
+            is self.timeline_tab
             and not self.analytics_loaded[
                 "timeline"
             ]
@@ -758,23 +1058,10 @@ class MainWindow(QMainWindow):
         critical_alert_count = sum(
             1
             for alert in alerts
-            if (
-                str(
-                    alert.get(
-                        "severity",
-                        "",
-                    )
-                ).upper()
-                == "CRITICAL"
-                or int(
-                    alert.get(
-                        "risk_score",
-                        0,
-                    )
-                    or 0
-                )
-                >= 12
+            if self.get_alert_level(
+                alert
             )
+            == "CRITICAL"
         )
 
         self.critical_alerts_label.setText(
@@ -821,7 +1108,7 @@ class MainWindow(QMainWindow):
         )
 
     # =========================================================
-    # PAKET TABLOSU
+    # PACKET TABLOSU / DETAY
     # =========================================================
 
     def update_packet_table(
@@ -862,7 +1149,10 @@ class MainWindow(QMainWindow):
                     packet.get("dns_query"),
                 ]
 
-                for column, value in enumerate(
+                for (
+                    column,
+                    value,
+                ) in enumerate(
                     values
                 ):
                     if value is None:
@@ -890,9 +1180,11 @@ class MainWindow(QMainWindow):
         ):
             return
 
-        packet = self.displayed_packets[
-            row
-        ]
+        packet = (
+            self.displayed_packets[
+                row
+            ]
+        )
 
         detail_text = (
             f"Timestamp: {packet.get('timestamp')}\n"
@@ -926,89 +1218,61 @@ class MainWindow(QMainWindow):
         )
 
     # =========================================================
-    # ALERT TABLOSU
-    # =========================================================
-
-    def update_alert_table(
-        self,
-        alerts,
-    ):
-        self.alert_table.setRowCount(
-            len(alerts)
-        )
-
-        for row, alert in enumerate(
-            alerts
-        ):
-            values = [
-                alert.get("type"),
-                alert.get("source_ip"),
-                alert.get("destination_ip"),
-                alert.get("risk_score"),
-                alert.get("reason"),
-            ]
-
-            for column, value in enumerate(
-                values
-            ):
-                if value is None:
-                    value = ""
-
-                self.alert_table.setItem(
-                    row,
-                    column,
-                    QTableWidgetItem(
-                        str(value)
-                    ),
-                )
-
-    def show_alert_detail(
-        self,
-        row,
-        column,
-    ):
-        if row >= len(self.alerts):
-            return
-
-        alert = self.alerts[row]
-
-        evidence = alert.get(
-            "evidence"
-        ) or []
-
-        evidence_text = "\n".join(
-            f"- {item}"
-            for item in evidence
-        )
-
-        if not evidence_text:
-            evidence_text = (
-                "- Ek evidence bilgisi bulunmuyor."
-            )
-
-        detail_text = (
-            f"Alert Type: {alert.get('type')}\n"
-            f"Severity: {alert.get('severity')}\n"
-            f"Risk Score: {alert.get('risk_score')}\n"
-            f"Confidence: {alert.get('confidence')}\n"
-            f"Source IP: {alert.get('source_ip')}\n"
-            f"Destination IP: {alert.get('destination_ip')}\n"
-            f"Source Port: {alert.get('source_port')}\n"
-            f"Destination Port: {alert.get('destination_port')}\n"
-            f"First Seen: {alert.get('first_seen')}\n"
-            f"Last Seen: {alert.get('last_seen')}\n"
-            f"Packet Count: {alert.get('packet_count')}\n\n"
-            f"Reason:\n{alert.get('reason')}\n\n"
-            f"Evidence:\n{evidence_text}"
-        )
-
-        self.alert_detail.setPlainText(
-            detail_text
-        )
-
-    # =========================================================
     # PACKET FILTERS
     # =========================================================
+
+    def configure_time_filter_range(
+        self,
+    ):
+        timestamps = []
+
+        for packet in self.packets:
+            timestamp = packet.get(
+                "timestamp"
+            )
+
+            if timestamp is None:
+                continue
+
+            try:
+                timestamps.append(
+                    float(
+                        timestamp
+                    )
+                )
+            except (
+                TypeError,
+                ValueError,
+            ):
+                continue
+
+        if not timestamps:
+            self.time_filter_check.setChecked(
+                False
+            )
+            return
+
+        minimum = int(
+            min(
+                timestamps
+            )
+        )
+        maximum = int(
+            max(
+                timestamps
+            )
+        )
+
+        self.start_time_edit.setDateTime(
+            QDateTime.fromSecsSinceEpoch(
+                minimum
+            )
+        )
+        self.end_time_edit.setDateTime(
+            QDateTime.fromSecsSinceEpoch(
+                maximum
+            )
+        )
 
     def apply_packet_filter(
         self,
@@ -1035,6 +1299,38 @@ class MainWindow(QMainWindow):
             self.protocol_filter
             .currentText()
         )
+
+        use_time_filter = (
+            self.time_filter_check
+            .isChecked()
+        )
+
+        start_timestamp = (
+            self.start_time_edit
+            .dateTime()
+            .toSecsSinceEpoch()
+        )
+
+        end_timestamp = (
+            self.end_time_edit
+            .dateTime()
+            .toSecsSinceEpoch()
+        )
+
+        if (
+            use_time_filter
+            and start_timestamp
+            > end_timestamp
+        ):
+            QMessageBox.warning(
+                self,
+                "Geçersiz Tarih/Saat Aralığı",
+                (
+                    "Başlangıç zamanı bitiş "
+                    "zamanından büyük olamaz."
+                ),
+            )
+            return
 
         filtered_packets = []
 
@@ -1081,7 +1377,8 @@ class MainWindow(QMainWindow):
 
             if (
                 source_text
-                and source_text not in src_ip
+                and source_text
+                not in src_ip
             ):
                 continue
 
@@ -1094,16 +1391,46 @@ class MainWindow(QMainWindow):
 
             if (
                 port_text
-                and port_text != src_port
-                and port_text != dst_port
+                and port_text
+                != src_port
+                and port_text
+                != dst_port
             ):
                 continue
 
             if (
-                protocol_text != "ALL"
-                and protocol != protocol_text
+                protocol_text
+                != "ALL"
+                and protocol
+                != protocol_text
             ):
                 continue
+
+            if use_time_filter:
+                timestamp = packet.get(
+                    "timestamp"
+                )
+
+                if timestamp is None:
+                    continue
+
+                try:
+                    timestamp = float(
+                        timestamp
+                    )
+                except (
+                    TypeError,
+                    ValueError,
+                ):
+                    continue
+
+                if (
+                    timestamp
+                    < start_timestamp
+                    or timestamp
+                    > end_timestamp
+                ):
+                    continue
 
             filtered_packets.append(
                 packet
@@ -1129,6 +1456,11 @@ class MainWindow(QMainWindow):
         self.protocol_filter.setCurrentText(
             "ALL"
         )
+        self.time_filter_check.setChecked(
+            False
+        )
+
+        self.configure_time_filter_range()
 
         self.update_packet_table(
             self.packets
@@ -1139,6 +1471,436 @@ class MainWindow(QMainWindow):
         )
 
     # =========================================================
+    # ALERT TABLOSU / FILTER / DETAY
+    # =========================================================
+
+    def get_alert_level(
+        self,
+        alert,
+    ):
+        severity = str(
+            alert.get(
+                "severity",
+                "",
+            )
+            or ""
+        ).upper()
+
+        if severity in {
+            "LOW",
+            "MEDIUM",
+            "HIGH",
+            "CRITICAL",
+        }:
+            return severity
+
+        score = int(
+            alert.get(
+                "risk_score",
+                0,
+            )
+            or 0
+        )
+
+        if score >= 12:
+            return "CRITICAL"
+
+        if score >= 10:
+            return "HIGH"
+
+        if score >= 5:
+            return "MEDIUM"
+
+        return "LOW"
+
+    def refresh_alert_type_filter(
+        self,
+    ):
+        selected = (
+            self.alert_type_filter
+            .currentText()
+        )
+
+        alert_types = sorted(
+            {
+                str(
+                    alert.get(
+                        "type",
+                        "UNKNOWN",
+                    )
+                )
+                for alert in self.alerts
+            }
+        )
+
+        self.alert_type_filter.blockSignals(
+            True
+        )
+
+        self.alert_type_filter.clear()
+        self.alert_type_filter.addItem(
+            "ALL"
+        )
+        self.alert_type_filter.addItems(
+            alert_types
+        )
+
+        index = (
+            self.alert_type_filter
+            .findText(
+                selected
+            )
+        )
+
+        if index >= 0:
+            self.alert_type_filter.setCurrentIndex(
+                index
+            )
+
+        self.alert_type_filter.blockSignals(
+            False
+        )
+
+    def update_alert_table(
+        self,
+        alerts,
+    ):
+        self.displayed_alerts = list(
+            alerts
+        )
+
+        self.alert_table.setRowCount(
+            len(
+                self.displayed_alerts
+            )
+        )
+
+        for (
+            row,
+            alert,
+        ) in enumerate(
+            self.displayed_alerts
+        ):
+            values = [
+                alert.get("type"),
+                self.get_alert_level(
+                    alert
+                ),
+                alert.get("source_ip"),
+                alert.get(
+                    "destination_ip"
+                ),
+                alert.get("risk_score"),
+                alert.get("reason"),
+            ]
+
+            for (
+                column,
+                value,
+            ) in enumerate(
+                values
+            ):
+                if value is None:
+                    value = ""
+
+                self.alert_table.setItem(
+                    row,
+                    column,
+                    QTableWidgetItem(
+                        str(value)
+                    ),
+                )
+
+    def apply_alert_filter(
+        self,
+    ):
+        alert_type = (
+            self.alert_type_filter
+            .currentText()
+        )
+
+        risk_level = (
+            self.alert_risk_filter
+            .currentText()
+        )
+
+        ip_text = (
+            self.alert_ip_filter
+            .text()
+            .strip()
+        )
+
+        filtered_alerts = []
+
+        for alert in self.alerts:
+            if (
+                alert_type != "ALL"
+                and alert.get(
+                    "type"
+                )
+                != alert_type
+            ):
+                continue
+
+            if (
+                risk_level != "ALL"
+                and self.get_alert_level(
+                    alert
+                )
+                != risk_level
+            ):
+                continue
+
+            if ip_text:
+                source_ip = str(
+                    alert.get(
+                        "source_ip",
+                        "",
+                    )
+                    or ""
+                )
+
+                destination_ip = str(
+                    alert.get(
+                        "destination_ip",
+                        "",
+                    )
+                    or ""
+                )
+
+                if (
+                    ip_text
+                    not in source_ip
+                    and ip_text
+                    not in destination_ip
+                ):
+                    continue
+
+            filtered_alerts.append(
+                alert
+            )
+
+        self.update_alert_table(
+            filtered_alerts
+        )
+
+        self.statusBar().showMessage(
+            f"Alarm filtresi sonucu: "
+            f"{len(filtered_alerts)} alarm"
+        )
+
+    def clear_alert_filter(
+        self,
+    ):
+        self.alert_type_filter.setCurrentText(
+            "ALL"
+        )
+        self.alert_risk_filter.setCurrentText(
+            "ALL"
+        )
+        self.alert_ip_filter.clear()
+
+        self.update_alert_table(
+            self.alerts
+        )
+
+        self.statusBar().showMessage(
+            "Alarm filtreleri temizlendi."
+        )
+
+    def show_alert_detail(
+        self,
+        row,
+        column,
+    ):
+        if row >= len(
+            self.displayed_alerts
+        ):
+            return
+
+        alert = (
+            self.displayed_alerts[
+                row
+            ]
+        )
+
+        evidence = (
+            alert.get(
+                "evidence"
+            )
+            or []
+        )
+
+        evidence_text = "\n".join(
+            f"- {item}"
+            for item in evidence
+        )
+
+        if not evidence_text:
+            evidence_text = (
+                "- Ek evidence bilgisi bulunmuyor."
+            )
+
+        detail_text = (
+            f"Alert Type: {alert.get('type')}\n"
+            f"Level: {self.get_alert_level(alert)}\n"
+            f"Severity: {alert.get('severity')}\n"
+            f"Risk Score: {alert.get('risk_score')}\n"
+            f"Confidence: {alert.get('confidence')}\n"
+            f"Source IP: {alert.get('source_ip')}\n"
+            f"Destination IP: {alert.get('destination_ip')}\n"
+            f"Source Port: {alert.get('source_port')}\n"
+            f"Destination Port: {alert.get('destination_port')}\n"
+            f"First Seen: {alert.get('first_seen')}\n"
+            f"Last Seen: {alert.get('last_seen')}\n"
+            f"Packet Count: {alert.get('packet_count')}\n\n"
+            f"Reason:\n{alert.get('reason')}\n\n"
+            f"Evidence:\n{evidence_text}"
+        )
+
+        self.alert_detail.setPlainText(
+            detail_text
+        )
+
+    # =========================================================
+    # REPORT EXPORT
+    # =========================================================
+
+    def export_report(
+        self,
+    ):
+        if (
+            not self.current_statistics
+            or not self.selected_file
+        ):
+            QMessageBox.warning(
+                self,
+                "Rapor Oluşturulamadı",
+                "Önce bir PCAP analizi tamamlanmalıdır.",
+            )
+            return
+
+        report_format = (
+            self.report_format_combo
+            .currentText()
+            .upper()
+        )
+
+        extension_map = {
+            "JSON": "json",
+            "HTML": "html",
+            "PDF": "pdf",
+        }
+
+        extension = (
+            extension_map[
+                report_format
+            ]
+        )
+
+        default_name = (
+            f"{Path(self.selected_file).stem}"
+            f"_ids_report.{extension}"
+        )
+
+        filter_map = {
+            "JSON": (
+                "JSON Files (*.json)"
+            ),
+            "HTML": (
+                "HTML Files (*.html)"
+            ),
+            "PDF": (
+                "PDF Files (*.pdf)"
+            ),
+        }
+
+        output_path, _ = (
+            QFileDialog.getSaveFileName(
+                self,
+                "IDS Raporunu Kaydet",
+                default_name,
+                filter_map[
+                    report_format
+                ],
+            )
+        )
+
+        if not output_path:
+            return
+
+        if not output_path.lower().endswith(
+            f".{extension}"
+        ):
+            output_path += (
+                f".{extension}"
+            )
+
+        report_data = build_report_data(
+            file_path=(
+                self.selected_file
+            ),
+            packets=self.packets,
+            statistics=(
+                self.current_statistics
+            ),
+            alerts=self.alerts,
+            risk_score=(
+                self.current_risk_score
+            ),
+            risk_level=(
+                self.current_risk_level
+            ),
+            risk_breakdown=(
+                self.current_risk_breakdown
+            ),
+        )
+
+        try:
+            if report_format == "JSON":
+                export_json(
+                    output_path,
+                    report_data,
+                )
+
+            elif report_format == "HTML":
+                export_html(
+                    output_path,
+                    report_data,
+                )
+
+            elif report_format == "PDF":
+                export_pdf(
+                    output_path,
+                    report_data,
+                )
+
+        except Exception as error:
+            QMessageBox.critical(
+                self,
+                "Rapor Hatası",
+                (
+                    "Rapor oluşturulamadı.\n\n"
+                    f"Detay: {error}"
+                ),
+            )
+            return
+
+        QMessageBox.information(
+            self,
+            "Rapor Oluşturuldu",
+            (
+                f"{report_format} raporu "
+                "başarıyla oluşturuldu.\n\n"
+                f"{output_path}"
+            ),
+        )
+
+        self.statusBar().showMessage(
+            f"{report_format} raporu oluşturuldu."
+        )
+
+    # =========================================================
     # PENCERE KAPATMA
     # =========================================================
 
@@ -1146,10 +1908,6 @@ class MainWindow(QMainWindow):
         self,
         event,
     ):
-        # Worker uzun bir Scapy işlemi içindeyken QThread'i
-        # zorla yok etmek uygulamayı çökertir. Güvenli iptal
-        # mekanizması eklenene kadar analiz tamamlanmadan
-        # pencerenin kapanmasına izin vermiyoruz.
         if (
             self.analysis_thread is not None
             and self.analysis_thread.isRunning()
