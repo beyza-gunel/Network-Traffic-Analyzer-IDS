@@ -1,141 +1,156 @@
+"""Professional 0-100 risk correlation engine.
+
+Detector risk_score values remain detector/rule weights.
+This module converts individual alert severity plus correlation context
+into a true global 0-100 risk score.
+"""
+
+SEVERITY_BASE_SCORE = {
+    "LOW": 10,
+    "MEDIUM": 35,
+    "HIGH": 60,
+    "CRITICAL": 85,
+}
+
+VALID_LEVELS = {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
+
+
+def _safe_int(value, default=0):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _alert_type(alert):
+    return str(
+        alert.get("type")
+        or alert.get("alert_type")
+        or "UNKNOWN"
+    ).upper()
+
+
+def _alert_level(alert):
+    severity = str(alert.get("severity") or "").upper()
+
+    if severity in VALID_LEVELS:
+        return severity
+
+    # Backward compatibility for detectors that expose only rule weight.
+    weight = _safe_int(alert.get("risk_score"), 0)
+
+    if weight >= 12:
+        return "CRITICAL"
+    if weight >= 10:
+        return "HIGH"
+    if weight >= 5:
+        return "MEDIUM"
+    return "LOW"
+
+
+def risk_level_from_score(score):
+    score = max(0, min(100, _safe_int(score, 0)))
+
+    if score >= 75:
+        return "CRITICAL"
+    if score >= 50:
+        return "HIGH"
+    if score >= 25:
+        return "MEDIUM"
+    return "LOW"
+
+
 def calculate_risk(alerts):
+    """Return a normalized global 0-100 risk result.
+
+    Baseline by highest alert severity:
+      LOW=10, MEDIUM=35, HIGH=60, CRITICAL=85
+
+    Correlation:
+      +5 when two or more alarms coexist
+      +5 per additional distinct attack type, capped at +10
+
+    Example:
+      3 distinct HIGH alerts = 60 + 5 + 10 = 75 / CRITICAL
+    """
+    alerts = list(alerts or [])
 
     if not alerts:
+        empty = []
         return {
             "score": 0,
             "level": "LOW",
-            "contributions": []
+            "breakdown": empty,
+            "contributions": empty,
         }
 
-    total_score = 0
-    contributions = []
+    levels = [_alert_level(alert) for alert in alerts]
 
-    seen_alert_types = set()
+    highest_level = max(
+        levels,
+        key=lambda level: SEVERITY_BASE_SCORE[level],
+    )
+    base_score = SEVERITY_BASE_SCORE[highest_level]
 
-    # -------------------------------------------------
-    # TRAFFIC BURST İLE İLİŞKİLİ ÖZEL SALDIRILAR
-    # -------------------------------------------------
+    alert_count = len(alerts)
+    unique_types = {_alert_type(alert) for alert in alerts}
+    unique_type_count = len(unique_types)
 
-    burst_correlated_types = {
-        "SYN_FLOOD",
-        "ICMP_FLOOD",
-        "SMURF_ATTACK",
-        "DEAUTH_ATTACK",
-        "DISASSOCIATION_ATTACK"
-    }
-
-    has_specific_burst_attack = any(
-        alert.get("type") in burst_correlated_types
-        for alert in alerts
+    multiple_alert_bonus = 5 if alert_count >= 2 else 0
+    diversity_bonus = min(
+        10,
+        max(0, (unique_type_count - 1) * 5),
     )
 
-    # -------------------------------------------------
-    # EVIL TWIN / ROGUE AP KORELASYONU
-    # -------------------------------------------------
+    final_score = min(
+        100,
+        base_score + multiple_alert_bonus + diversity_bonus,
+    )
+    final_level = risk_level_from_score(final_score)
 
-    has_evil_twin = any(
-        alert.get("type") == "EVIL_TWIN"
-        for alert in alerts
+    breakdown = [
+        {
+            "component": "severity_baseline",
+            "label": "En yüksek alarm seviyesi",
+            "score": base_score,
+            "detail": highest_level,
+        }
+    ]
+
+    if multiple_alert_bonus:
+        breakdown.append(
+            {
+                "component": "multiple_alert_bonus",
+                "label": "Çoklu alarm korelasyonu",
+                "score": multiple_alert_bonus,
+                "detail": f"{alert_count} alarm birlikte görüldü",
+            }
+        )
+
+    if diversity_bonus:
+        breakdown.append(
+            {
+                "component": "attack_diversity_bonus",
+                "label": "Saldırı çeşitliliği",
+                "score": diversity_bonus,
+                "detail": f"{unique_type_count} farklı saldırı türü",
+            }
+        )
+
+    breakdown.append(
+        {
+            "component": "final_score",
+            "label": "Genel risk",
+            "score": final_score,
+            "detail": f"{final_level} / 100",
+        }
     )
 
-    # -------------------------------------------------
-    # RİSK HESAPLAMA
-    # -------------------------------------------------
-
-    for alert in alerts:
-
-        alert_type = alert.get(
-            "type",
-            "UNKNOWN"
-        )
-
-        base_score = int(
-            alert.get(
-                "risk_score",
-                0
-            )
-        )
-
-        contribution = base_score
-        contribution_type = "PRIMARY"
-
-        # Traffic Burst başka bir saldırının
-        # sonucuysa tam puan verme.
-        if (
-            alert_type == "TRAFFIC_BURST"
-            and has_specific_burst_attack
-        ):
-
-            contribution = min(
-                base_score,
-                3
-            )
-
-            contribution_type = "SUPPORTING"
-
-        # Evil Twin zaten tespit edilmişse
-        # Rogue AP aynı olayın destekleyici
-        # göstergesi olarak değerlendirilir.
-        elif (
-            alert_type == "ROGUE_AP"
-            and has_evil_twin
-        ):
-
-            contribution = min(
-                base_score,
-                3
-            )
-
-            contribution_type = "SUPPORTING"
-
-        # Aynı alarm türü birden fazla kez
-        # oluşursa riski gereksiz şişirme.
-        elif alert_type in seen_alert_types:
-
-            contribution = min(
-                base_score,
-                2
-            )
-
-            contribution_type = "REPEATED"
-
-        total_score += contribution
-
-        contributions.append({
-            "alert_type": alert_type,
-            "base_score": base_score,
-            "contribution": contribution,
-            "contribution_type": contribution_type
-        })
-
-        seen_alert_types.add(
-            alert_type
-        )
-
-    # Maksimum risk puanı
-    total_score = min(
-        total_score,
-        100
-    )
-
-    # -------------------------------------------------
-    # RİSK SEVİYESİ
-    # -------------------------------------------------
-
-    if total_score >= 20:
-        level = "CRITICAL"
-
-    elif total_score >= 10:
-        level = "HIGH"
-
-    elif total_score >= 5:
-        level = "MEDIUM"
-
-    else:
-        level = "LOW"
-
+    # "contributions" is retained for compatibility with earlier
+    # AnalysisService / report code.
     return {
-        "score": total_score,
-        "level": level,
-        "contributions": contributions
+        "score": final_score,
+        "level": final_level,
+        "breakdown": breakdown,
+        "contributions": breakdown,
     }
