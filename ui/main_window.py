@@ -1,5 +1,6 @@
 from PySide6.QtGui import QColor
 from pathlib import Path
+from datetime import datetime
 
 from PySide6.QtCore import Qt, QThread, QDateTime
 from PySide6.QtWidgets import (
@@ -2339,15 +2340,93 @@ class MainWindow(QMainWindow):
 
         return None
 
+    def _refresh_time_cache(
+        self,
+    ):
+        packets = self.packets
+        source_id = id(
+            packets
+        )
+        source_length = len(
+            packets
+        )
+
+        if (
+            getattr(
+                self,
+                "_time_cache_source_id",
+                None,
+            )
+            == source_id
+            and getattr(
+                self,
+                "_time_cache_source_length",
+                None,
+            )
+            == source_length
+        ):
+            return
+
+        first_timestamp = None
+        maximum_timestamp = None
+
+        for packet in packets:
+            value = (
+                self._packet_raw_timestamp(
+                    packet
+                )
+            )
+
+            if value is None:
+                continue
+
+            if (
+                first_timestamp is None
+                or value < first_timestamp
+            ):
+                first_timestamp = value
+
+            if (
+                maximum_timestamp is None
+                or value > maximum_timestamp
+            ):
+                maximum_timestamp = value
+
+        self._capture_start_timestamp = (
+            first_timestamp
+        )
+
+        if (
+            maximum_timestamp is not None
+            and maximum_timestamp < 946684800
+        ):
+            self._relative_time_base = (
+                first_timestamp
+            )
+        else:
+            self._relative_time_base = None
+
+        self._time_cache_source_id = (
+            source_id
+        )
+        self._time_cache_source_length = (
+            source_length
+        )
+
     def _format_packet_time(
         self,
         packet,
     ):
+        self._refresh_time_cache()
+
         raw_timestamp = (
             self._packet_raw_timestamp(
                 packet
             )
         )
+
+        if raw_timestamp is None:
+            return ""
 
         relative_base = getattr(
             self,
@@ -2355,31 +2434,102 @@ class MainWindow(QMainWindow):
             None,
         )
 
-        if relative_base is None:
-            relative_base = (
-                self._detect_relative_time_base(
-                    self.packets
-                )
-            )
-
-        if (
-            relative_base is not None
-            and raw_timestamp is not None
-        ):
+        if relative_base is not None:
             return (
                 f"{raw_timestamp - relative_base:.3f} sn"
             )
 
-        value = packet.get(
-            "timestamp"
+        try:
+            local_time = datetime.fromtimestamp(
+                raw_timestamp
+            )
+        except (
+            OSError,
+            OverflowError,
+            TypeError,
+            ValueError,
+        ):
+            return str(
+                raw_timestamp
+            )
+
+        return (
+            local_time.strftime(
+                "%H:%M:%S.%f"
+            )[:-3]
+        )
+
+    def _format_packet_detail_time(
+        self,
+        packet,
+    ):
+        self._refresh_time_cache()
+
+        raw_timestamp = (
+            self._packet_raw_timestamp(
+                packet
+            )
+        )
+
+        if raw_timestamp is None:
+            return "Zaman: -"
+
+        relative_base = getattr(
+            self,
+            "_relative_time_base",
+            None,
+        )
+
+        capture_start = getattr(
+            self,
+            "_capture_start_timestamp",
+            None,
+        )
+
+        if relative_base is not None:
+            elapsed = max(
+                0.0,
+                raw_timestamp
+                - relative_base,
+            )
+            return (
+                "Yakalama Başlangıcından Sonra: "
+                f"{elapsed:.3f} sn"
+            )
+
+        try:
+            local_time = datetime.fromtimestamp(
+                raw_timestamp
+            )
+            readable = (
+                local_time.strftime(
+                    "%d.%m.%Y %H:%M:%S.%f"
+                )[:-3]
+            )
+        except (
+            OSError,
+            OverflowError,
+            TypeError,
+            ValueError,
+        ):
+            readable = str(
+                raw_timestamp
+            )
+
+        elapsed = (
+            max(
+                0.0,
+                raw_timestamp
+                - capture_start,
+            )
+            if capture_start is not None
+            else 0.0
         )
 
         return (
-            ""
-            if value is None
-            else str(
-                value
-            )
+            f"Tarih/Saat: {readable} | "
+            "Yakalama Başlangıcından Sonra: "
+            f"{elapsed:.3f} sn"
         )
 
     def update_packet_table(
@@ -2470,10 +2620,11 @@ class MainWindow(QMainWindow):
             )
         )
 
-        relative_base = (
-            self._detect_relative_time_base(
-                self.packets
-            )
+        self._refresh_time_cache()
+        relative_base = getattr(
+            self,
+            "_relative_time_base",
+            None,
         )
 
         if relative_base is not None:
@@ -2482,7 +2633,7 @@ class MainWindow(QMainWindow):
             time_title = "Zaman"
 
         detail_text = (
-            f"Yakalama Başlangıcından Sonra: {self._format_packet_time(packet).replace("+", "")}\n"
+            f"{self._format_packet_detail_time(packet)}\n"
             f"Kaynak IP: {packet.get('src_ip')}\n"
             f"Hedef IP: {packet.get('dst_ip')}\n"
             f"Kaynak MAC: {packet.get('src_mac')}\n"
