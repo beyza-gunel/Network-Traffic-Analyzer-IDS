@@ -21,3 +21,8 @@ Thumbs.db
 data/real_pcaps/test_results.json
 data/real_pcaps/
 test_results.json
+
+# PyInstaller build artifacts
+build/
+dist/
+*.spec
