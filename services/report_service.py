@@ -1173,3 +1173,592 @@ def export_pdf(output_path, report_data):
         _draw_recommendations_page(pdf, report_data, str(5 + detail_pages))
 
     return path
+
+# =========================================================
+# EXCEL / XLSX REPORT EXPORT (standard-library implementation)
+# =========================================================
+
+def _xlsx_col_name(index):
+    """1-based column number -> Excel column name."""
+    result = ""
+    while index:
+        index, remainder = divmod(index - 1, 26)
+        result = chr(65 + remainder) + result
+    return result
+
+
+def _xlsx_xml_escape(value):
+    from xml.sax.saxutils import escape
+
+    text = str(value if value is not None else "")
+    return escape(text, {'"': '&quot;', "'": '&apos;'})
+
+
+def _xlsx_cell_xml(row_index, column_index, value, style_id=0):
+    reference = f"{_xlsx_col_name(column_index)}{row_index}"
+    style = f' s="{style_id}"' if style_id else ""
+
+    if value is None:
+        return f'<c r="{reference}"{style}/>'
+
+    if isinstance(value, bool):
+        return f'<c r="{reference}" t="b"{style}><v>{1 if value else 0}</v></c>'
+
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return f'<c r="{reference}"{style}><v>{value}</v></c>'
+
+    text = _xlsx_xml_escape(value)
+    return (
+        f'<c r="{reference}" t="inlineStr"{style}>'
+        f'<is><t xml:space="preserve">{text}</t></is></c>'
+    )
+
+
+def _xlsx_sheet_xml(rows, widths=None, freeze_row=0, auto_filter=None, merges=None):
+    max_columns = max(max((len(row) for row in rows), default=1), len(widths or []), 1)
+    max_rows = max(len(rows), 1)
+    dimension = f"A1:{_xlsx_col_name(max_columns)}{max_rows}"
+
+    columns_xml = ""
+    if widths:
+        column_items = []
+        for index, width in enumerate(widths, start=1):
+            column_items.append(
+                f'<col min="{index}" max="{index}" width="{float(width):.2f}" customWidth="1"/>'
+            )
+        columns_xml = f"<cols>{''.join(column_items)}</cols>"
+
+    pane_xml = ""
+    if freeze_row and freeze_row > 0:
+        top_left = f"A{freeze_row + 1}"
+        pane_xml = (
+            f'<pane ySplit="{freeze_row}" topLeftCell="{top_left}" '
+            'activePane="bottomLeft" state="frozen"/>'
+        )
+
+    row_xml = []
+    for row_index, row in enumerate(rows, start=1):
+        cells = []
+        for column_index, item in enumerate(row, start=1):
+            if isinstance(item, tuple) and len(item) == 2:
+                value, style_id = item
+            else:
+                value, style_id = item, 0
+            cells.append(
+                _xlsx_cell_xml(
+                    row_index,
+                    column_index,
+                    value,
+                    style_id,
+                )
+            )
+        row_xml.append(f'<row r="{row_index}">{"".join(cells)}</row>')
+
+    auto_filter_xml = f'<autoFilter ref="{auto_filter}"/>' if auto_filter else ""
+    merge_xml = ""
+    if merges:
+        merge_xml = (
+            f'<mergeCells count="{len(merges)}">'
+            + "".join(f'<mergeCell ref="{_xlsx_xml_escape(item)}"/>' for item in merges)
+            + "</mergeCells>"
+        )
+
+    return f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <dimension ref="{dimension}"/>
+  <sheetViews><sheetView workbookViewId="0">{pane_xml}</sheetView></sheetViews>
+  <sheetFormatPr defaultRowHeight="15"/>
+  {columns_xml}
+  <sheetData>{''.join(row_xml)}</sheetData>
+  {auto_filter_xml}
+  {merge_xml}
+</worksheet>'''
+
+
+def _xlsx_styles_xml():
+    # Style IDs used by export_excel:
+    # 0 default, 1 title, 2 section, 3 table header, 4 body,
+    # 5 wrapped body, 6 LOW, 7 MEDIUM, 8 HIGH, 9 CRITICAL,
+    # 10 KPI label, 11 KPI value, 12 muted/meta, 13 accent header.
+    return '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="7">
+    <font><sz val="11"/><name val="Calibri"/><family val="2"/><scheme val="minor"/></font>
+    <font><b/><sz val="16"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>
+    <font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>
+    <font><b/><sz val="11"/><color rgb="FF0B172A"/><name val="Calibri"/></font>
+    <font><b/><sz val="14"/><color rgb="FF0B172A"/><name val="Calibri"/></font>
+    <font><sz val="10"/><color rgb="FF64748B"/><name val="Calibri"/></font>
+    <font><b/><sz val="12"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>
+  </fonts>
+  <fills count="11">
+    <fill><patternFill patternType="none"/></fill>
+    <fill><patternFill patternType="gray125"/></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF0B172A"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF168BCE"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFEAF5FB"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF2DBE7F"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFE0A82E"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFE2782D"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFD94B55"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFF3F6F9"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF12233D"/><bgColor indexed="64"/></patternFill></fill>
+  </fills>
+  <borders count="2">
+    <border><left/><right/><top/><bottom/><diagonal/></border>
+    <border>
+      <left style="thin"><color rgb="FFD8E1EA"/></left>
+      <right style="thin"><color rgb="FFD8E1EA"/></right>
+      <top style="thin"><color rgb="FFD8E1EA"/></top>
+      <bottom style="thin"><color rgb="FFD8E1EA"/></bottom>
+      <diagonal/>
+    </border>
+  </borders>
+  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+  <cellXfs count="14">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"><alignment vertical="center"/></xf>
+    <xf numFmtId="0" fontId="2" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment vertical="center"/></xf>
+    <xf numFmtId="0" fontId="2" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"><alignment vertical="top"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"><alignment vertical="top" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="2" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="2" fillId="6" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="2" fillId="7" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="2" fillId="8" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="3" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="4" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="5" fillId="9" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment vertical="top" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="6" fillId="10" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment vertical="center"/></xf>
+  </cellXfs>
+  <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>'''
+
+
+def _xlsx_risk_style(level):
+    return {
+        "LOW": 6,
+        "MEDIUM": 7,
+        "HIGH": 8,
+        "CRITICAL": 9,
+    }.get(str(level or "").upper(), 4)
+
+
+def _xlsx_alert_time(report_data, value):
+    timestamp = _safe_float(value)
+    if timestamp is None:
+        return "-"
+
+    period = report_data.get("analysis_period", {})
+    if period.get("is_synthetic_time") or period.get("time_mode") == "relative":
+        start = _safe_float(period.get("first_timestamp"))
+        return _fmt_relative_timestamp(timestamp, start)
+
+    return _fmt_timestamp(timestamp)
+
+
+def _xlsx_rows_for_summary(report_data):
+    stats = report_data.get("statistics", {})
+    risk = report_data.get("risk", {})
+    summary = report_data.get("summary", {})
+    period = report_data.get("analysis_period", {})
+    traffic = report_data.get("traffic", {})
+    alerts = report_data.get("alerts", [])
+    flow_summary = report_data.get("flow_summary", {})
+
+    rows = [
+        [("NETWORK TRAFFIC ANALYZER & IDS - EXCEL GÜVENLİK RAPORU", 1)],
+        [],
+        [("Rapor Bilgileri", 2)],
+        [("PCAP", 10), (report_data.get("pcap_file_name", "-"), 5), ("Rapor Tarihi", 10), (report_data.get("generated_at", "-"), 5)],
+        [("Analiz Başlangıcı", 10), (period.get("first_readable", "-"), 5), ("Analiz Bitişi", 10), (period.get("last_readable", "-"), 5)],
+        [("Trafik Süresi", 10), (f"{_safe_float(period.get('duration_seconds')) or 0:.2f} sn", 11), ("Rapor Sürümü", 10), (report_data.get("report_version", "-"), 11)],
+        [],
+        [("Yönetici Özeti", 2)],
+        [(report_data.get("executive_summary", "-"), 5)],
+        [],
+        [("Güvenlik Durumu", 2)],
+        [("Genel Risk", 10), (str(risk.get("level", "LOW")).upper(), _xlsx_risk_style(risk.get("level"))), ("Risk Skoru", 10), (f"{_safe_int(risk.get('score'), 0)}/100", 11)],
+        [("Toplam Paket", 10), (_safe_int(stats.get("total_packets"), 0), 11), ("Güvenlik Alarmı", 10), (len(alerts), 11)],
+        [("Benzersiz IP", 10), (_safe_int(stats.get("unique_ips"), 0), 11), ("Benzersiz Port", 10), (_safe_int(stats.get("unique_ports"), 0), 11)],
+        [("TCP Bağlantısı", 10), (_safe_int(stats.get("tcp_connections"), 0), 11), ("UDP Trafiği", 10), (_safe_int(stats.get("udp_packets"), 0), 11)],
+        [("Flow Sayısı", 10), (_safe_int(flow_summary.get("count"), 0), 11), ("Toplam Veri", 10), (f"{_fmt_number(traffic.get('total_bytes', 0))} B", 11)],
+        [],
+        [("Öne Çıkan Tespitler", 2)],
+        [("Alarm Tipi", 3), ("Adet", 3), ("Seviye Dağılımı", 3), ("Adet", 3)],
+    ]
+
+    alert_types = list(summary.get("alert_type_distribution", {}).items())
+    alert_levels = list(summary.get("alert_level_distribution", {}).items())
+    maximum = max(len(alert_types), len(alert_levels), 1)
+    for index in range(maximum):
+        type_item = alert_types[index] if index < len(alert_types) else ("-", "")
+        level_item = alert_levels[index] if index < len(alert_levels) else ("-", "")
+        rows.append([
+            (type_item[0], 4),
+            (type_item[1], 4),
+            (level_item[0], _xlsx_risk_style(level_item[0])),
+            (level_item[1], 4),
+        ])
+
+    if period.get("note"):
+        rows.extend([
+            [],
+            [("Analiz Notu", 2)],
+            [(period.get("note"), 12)],
+        ])
+
+    return rows
+
+
+def _xlsx_rows_for_alerts(report_data):
+    rows = [[
+        ("Alarm Tipi", 3), ("Seviye", 3), ("Risk", 3), ("Güven", 3),
+        ("Kaynak", 3), ("Hedef", 3), ("Kaynak Port", 3), ("Hedef Port", 3),
+        ("Paket", 3), ("İlk Görülme", 3), ("Son Görülme", 3),
+        ("Neden", 3), ("Teknik Kanıt", 3),
+    ]]
+
+    for alert in report_data.get("alerts", []):
+        level = alert.get("derived_level") or _alert_level(alert)
+        evidence = " | ".join(str(item) for item in (alert.get("evidence") or [])) or "-"
+        rows.append([
+            (alert.get("type", "UNKNOWN"), 4),
+            (level, _xlsx_risk_style(level)),
+            (_safe_int(alert.get("risk_score"), 0), 4),
+            (_confidence_text(alert.get("confidence")), 4),
+            (_entity(alert, True), 4),
+            (_entity(alert, False), 4),
+            (alert.get("source_port") if alert.get("source_port") is not None else "-", 4),
+            (alert.get("destination_port") if alert.get("destination_port") is not None else "-", 4),
+            (_safe_int(alert.get("packet_count"), 0), 4),
+            (_xlsx_alert_time(report_data, alert.get("first_seen")), 4),
+            (_xlsx_alert_time(report_data, alert.get("last_seen")), 4),
+            (alert.get("reason") or "-", 5),
+            (evidence, 5),
+        ])
+
+    if len(rows) == 1:
+        rows.append([("Güvenlik alarmı tespit edilmedi.", 12)])
+    return rows
+
+
+def _xlsx_rows_for_flows(report_data):
+    rows = [[
+        ("Protokol", 3), ("Kaynak IP", 3), ("Kaynak Port", 3),
+        ("Hedef IP", 3), ("Hedef Port", 3), ("Uygulama Protokolü", 3),
+        ("Paket", 3), ("Byte", 3), ("Süre (sn)", 3),
+        ("İleri Paket", 3), ("Ters Paket", 3), ("TCP Flags", 3),
+    ]]
+
+    for flow in report_data.get("flows", []):
+        flags = flow.get("tcp_flags") or []
+        if isinstance(flags, (list, tuple, set)):
+            flags = ", ".join(str(item) for item in flags)
+        rows.append([
+            (flow.get("protocol") or "-", 4),
+            (flow.get("source_ip") or "-", 4),
+            (flow.get("source_port") if flow.get("source_port") is not None else "-", 4),
+            (flow.get("destination_ip") or "-", 4),
+            (flow.get("destination_port") if flow.get("destination_port") is not None else "-", 4),
+            (flow.get("application_protocol") or flow.get("protocol") or "-", 4),
+            (_safe_int(flow.get("packet_count"), 0), 4),
+            (_safe_int(flow.get("byte_count"), 0), 4),
+            (round(_safe_float(flow.get("duration")) or 0.0, 6), 4),
+            (_safe_int(flow.get("forward_packets"), 0), 4),
+            (_safe_int(flow.get("reverse_packets"), 0), 4),
+            (flags or "-", 5),
+        ])
+
+    if len(rows) == 1:
+        rows.append([("IP tabanlı flow kaydı bulunamadı.", 12)])
+    return rows
+
+
+def _xlsx_rows_for_protocols(report_data):
+    summary = report_data.get("summary", {})
+    rows = [[("Protokol", 3), ("Paket Sayısı", 3), ("Kategori", 3)]]
+    for protocol, count in sorted(summary.get("protocol_distribution", {}).items(), key=lambda item: item[1], reverse=True):
+        rows.append([(protocol, 4), (count, 4), ("Network / Transport", 4)])
+    for protocol, count in sorted(summary.get("application_protocol_distribution", {}).items(), key=lambda item: item[1], reverse=True):
+        rows.append([(protocol, 4), (count, 4), ("Application", 4)])
+    if len(rows) == 1:
+        rows.append([("Protokol verisi bulunamadı.", 12)])
+    return rows
+
+
+def _xlsx_rows_for_assets(report_data):
+    summary = report_data.get("summary", {})
+    rows = [[("Varlık Türü", 3), ("Değer", 3), ("Paket Referansı", 3)]]
+    mappings = [
+        ("IP", "top_ips", "ip"),
+        ("MAC", "top_macs", "mac"),
+        ("BSSID", "top_bssids", "bssid"),
+        ("SSID", "top_ssids", "ssid"),
+        ("PORT", "top_ports", "port"),
+    ]
+    for label, key, value_key in mappings:
+        for item in summary.get(key, []):
+            rows.append([
+                (label, 4),
+                (item.get(value_key, "-"), 4),
+                (_safe_int(item.get("packet_references"), 0), 4),
+            ])
+    if len(rows) == 1:
+        rows.append([("Varlık bilgisi bulunamadı.", 12)])
+    return rows
+
+
+def _xlsx_rows_for_connections(report_data):
+    rows = [[("Kaynak IP", 3), ("Hedef IP", 3), ("Paket", 3)]]
+    for item in report_data.get("summary", {}).get("top_connections", []):
+        rows.append([
+            (item.get("source_ip") or "-", 4),
+            (item.get("destination_ip") or "-", 4),
+            (_safe_int(item.get("packets"), 0), 4),
+        ])
+    if len(rows) == 1:
+        rows.append([("IP bağlantı bilgisi bulunamadı.", 12)])
+    return rows
+
+
+def _xlsx_rows_for_recommendations(report_data):
+    rows = [[("Alarm Tipi", 3), ("Seviye", 3), ("Önerilen Aksiyon", 3)]]
+    for item in report_data.get("recommendations", []):
+        level = item.get("level", "LOW")
+        rows.append([
+            (item.get("alert_type", "GENERAL"), 4),
+            (level, _xlsx_risk_style(level)),
+            (item.get("text") or "-", 5),
+        ])
+    if len(rows) == 1:
+        rows.append([("GENERAL", 4), ("LOW", 6), ("Analiz sonuçlarını ağ baseline'ı ve diğer log kaynaklarıyla korele edin.", 5)])
+    return rows
+
+
+def _xlsx_rows_for_packets(report_data):
+    headers = [
+        "Zaman", "Kaynak IP", "Hedef IP", "Kaynak Port", "Hedef Port",
+        "Protokol", "Uygulama", "Paket Boyutu", "TCP Flags", "DNS Query",
+        "Kaynak MAC", "Hedef MAC", "SSID", "BSSID", "WLAN Subtype",
+        "EAPOL Key", "Replay Counter",
+    ]
+    rows = [[(header, 3) for header in headers]]
+    for packet in report_data.get("packet_sample", []):
+        rows.append([
+            (_xlsx_alert_time(report_data, packet.get("timestamp")), 4),
+            (packet.get("src_ip") or "-", 4),
+            (packet.get("dst_ip") or "-", 4),
+            (packet.get("src_port") if packet.get("src_port") is not None else "-", 4),
+            (packet.get("dst_port") if packet.get("dst_port") is not None else "-", 4),
+            (packet.get("protocol") or "-", 4),
+            (packet.get("application_protocol") or "-", 4),
+            (_safe_int(packet.get("packet_size"), 0), 4),
+            (packet.get("tcp_flags") or "-", 4),
+            (packet.get("dns_query") or "-", 5),
+            (packet.get("src_mac") or "-", 4),
+            (packet.get("dst_mac") or "-", 4),
+            (packet.get("ssid") or "-", 4),
+            (packet.get("bssid") or "-", 4),
+            (packet.get("wlan_subtype") if packet.get("wlan_subtype") is not None else "-", 4),
+            (packet.get("eapol_key_number") if packet.get("eapol_key_number") is not None else "-", 4),
+            (packet.get("eapol_replay_counter") if packet.get("eapol_replay_counter") is not None else "-", 4),
+        ])
+    return rows
+
+
+def export_excel(output_path, report_data):
+    """
+    Create a multi-sheet professional .xlsx IDS report without adding a new
+    third-party dependency to the desktop application.
+    """
+    from zipfile import ZIP_DEFLATED, ZipFile
+
+    path = Path(output_path)
+    if path.suffix.lower() != ".xlsx":
+        path = path.with_suffix(".xlsx")
+
+    # Older report-data dictionaries remain compatible.
+    data = dict(report_data or {})
+    if "executive_summary" not in data:
+        data["executive_summary"] = _build_executive_summary(data)
+    if "recommendations" not in data:
+        data["recommendations"] = _build_recommendations(data.get("alerts", []))
+    data.setdefault("summary", {})
+    data.setdefault("analysis_period", {})
+    data.setdefault("traffic", {})
+    data.setdefault("flow_summary", {})
+    data.setdefault("flows", [])
+    data.setdefault("packet_sample", [])
+
+    sheets = [
+        {
+            "name": "Özet",
+            "rows": _xlsx_rows_for_summary(data),
+            "widths": [22, 26, 22, 26, 18, 18, 18, 18],
+            "freeze": 0,
+            "filter": None,
+            "merges": ["A1:H2", "A3:H3", "A8:H8", "A9:H9", "A11:H11", "A18:H18", "A24:H24", "A25:H25"],
+        },
+        {
+            "name": "Alarmlar",
+            "rows": _xlsx_rows_for_alerts(data),
+            "widths": [20, 13, 10, 11, 22, 22, 12, 12, 10, 20, 20, 55, 65],
+            "freeze": 1,
+            "filter": None,
+            "merges": [],
+        },
+        {
+            "name": "Akışlar",
+            "rows": _xlsx_rows_for_flows(data),
+            "widths": [12, 20, 12, 20, 12, 20, 10, 12, 12, 12, 12, 28],
+            "freeze": 1,
+            "filter": None,
+            "merges": [],
+        },
+        {
+            "name": "Protokoller",
+            "rows": _xlsx_rows_for_protocols(data),
+            "widths": [24, 16, 24],
+            "freeze": 1,
+            "filter": None,
+            "merges": [],
+        },
+        {
+            "name": "Varlıklar",
+            "rows": _xlsx_rows_for_assets(data),
+            "widths": [18, 36, 18],
+            "freeze": 1,
+            "filter": None,
+            "merges": [],
+        },
+        {
+            "name": "Bağlantılar",
+            "rows": _xlsx_rows_for_connections(data),
+            "widths": [24, 24, 14],
+            "freeze": 1,
+            "filter": None,
+            "merges": [],
+        },
+        {
+            "name": "Öneriler",
+            "rows": _xlsx_rows_for_recommendations(data),
+            "widths": [22, 14, 90],
+            "freeze": 1,
+            "filter": None,
+            "merges": [],
+        },
+        {
+            "name": "Paket Örneği",
+            "rows": _xlsx_rows_for_packets(data),
+            "widths": [20, 18, 18, 12, 12, 13, 16, 13, 14, 42, 20, 20, 25, 20, 14, 14, 18],
+            "freeze": 1,
+            "filter": None,
+            "merges": [],
+        },
+    ]
+
+    # Apply filters to regular table sheets when there is at least one data row.
+    for sheet in sheets[1:]:
+        if len(sheet["rows"]) > 1:
+            last_col = _xlsx_col_name(max(len(row) for row in sheet["rows"]))
+            sheet["filter"] = f"A1:{last_col}{len(sheet['rows'])}"
+
+    now = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+
+    content_types = [
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">',
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>',
+        '<Default Extension="xml" ContentType="application/xml"/>',
+        '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>',
+        '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>',
+        '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>',
+        '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>',
+    ]
+    for index in range(1, len(sheets) + 1):
+        content_types.append(
+            f'<Override PartName="/xl/worksheets/sheet{index}.xml" '
+            'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+        )
+    content_types.append('</Types>')
+
+    workbook_sheets = []
+    workbook_rels = []
+    for index, sheet in enumerate(sheets, start=1):
+        workbook_sheets.append(
+            f'<sheet name="{_xlsx_xml_escape(sheet["name"])}" sheetId="{index}" r:id="rId{index}"/>'
+        )
+        workbook_rels.append(
+            f'<Relationship Id="rId{index}" '
+            'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" '
+            f'Target="worksheets/sheet{index}.xml"/>'
+        )
+    workbook_rels.append(
+        f'<Relationship Id="rId{len(sheets) + 1}" '
+        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" '
+        'Target="styles.xml"/>'
+    )
+
+    root_rels = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
+</Relationships>'''
+
+    workbook_xml = f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <bookViews><workbookView activeTab="0"/></bookViews>
+  <sheets>{''.join(workbook_sheets)}</sheets>
+</workbook>'''
+
+    workbook_rels_xml = f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  {''.join(workbook_rels)}
+</Relationships>'''
+
+    core_xml = f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"
+ xmlns:dc="http://purl.org/dc/elements/1.1/"
+ xmlns:dcterms="http://purl.org/dc/terms/"
+ xmlns:dcmitype="http://purl.org/dc/dcmitype/"
+ xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <dc:creator>Network Traffic Analyzer &amp; IDS</dc:creator>
+  <cp:lastModifiedBy>Network Traffic Analyzer &amp; IDS</cp:lastModifiedBy>
+  <dcterms:created xsi:type="dcterms:W3CDTF">{now}</dcterms:created>
+  <dcterms:modified xsi:type="dcterms:W3CDTF">{now}</dcterms:modified>
+  <dc:title>IDS Security Analysis Report</dc:title>
+</cp:coreProperties>'''
+
+    app_xml = f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"
+ xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
+  <Application>Network Traffic Analyzer &amp; IDS</Application>
+  <Sheets>{len(sheets)}</Sheets>
+</Properties>'''
+
+    with ZipFile(path, "w", ZIP_DEFLATED) as archive:
+        archive.writestr("[Content_Types].xml", "".join(content_types))
+        archive.writestr("_rels/.rels", root_rels)
+        archive.writestr("docProps/core.xml", core_xml)
+        archive.writestr("docProps/app.xml", app_xml)
+        archive.writestr("xl/workbook.xml", workbook_xml)
+        archive.writestr("xl/_rels/workbook.xml.rels", workbook_rels_xml)
+        archive.writestr("xl/styles.xml", _xlsx_styles_xml())
+
+        for index, sheet in enumerate(sheets, start=1):
+            archive.writestr(
+                f"xl/worksheets/sheet{index}.xml",
+                _xlsx_sheet_xml(
+                    sheet["rows"],
+                    widths=sheet["widths"],
+                    freeze_row=sheet["freeze"],
+                    auto_filter=sheet["filter"],
+                    merges=sheet["merges"],
+                ),
+            )
+
+    return path
+

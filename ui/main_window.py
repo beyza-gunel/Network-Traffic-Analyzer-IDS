@@ -42,6 +42,7 @@ from services.report_service import (
     export_json,
     export_html,
     export_pdf,
+    export_excel,
 )
 from utils.security import (
     PcapValidationError,
@@ -262,6 +263,7 @@ class MainWindow(QMainWindow):
                 "JSON",
                 "HTML",
                 "PDF",
+                "EXCEL",
             ]
         )
 
@@ -3086,6 +3088,7 @@ class MainWindow(QMainWindow):
             "JSON": "json",
             "HTML": "html",
             "PDF": "pdf",
+            "EXCEL": "xlsx",
         }
 
         extension = (
@@ -3108,6 +3111,9 @@ class MainWindow(QMainWindow):
             ),
             "PDF": (
                 "PDF Files (*.pdf)"
+            ),
+            "EXCEL": (
+                "Excel Files (*.xlsx)"
             ),
         }
 
@@ -3168,6 +3174,12 @@ class MainWindow(QMainWindow):
 
             elif report_format == "PDF":
                 export_pdf(
+                    output_path,
+                    report_data,
+                )
+
+            elif report_format == "EXCEL":
+                export_excel(
                     output_path,
                     report_data,
                 )
