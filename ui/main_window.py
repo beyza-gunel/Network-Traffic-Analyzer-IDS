@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
     QTimeEdit,
+    QDoubleSpinBox,
     QCheckBox,
     QFrame,
     QSizePolicy,
@@ -132,13 +133,13 @@ class MainWindow(QMainWindow):
             content_widget
         )
         content_layout.setContentsMargins(
-            12,
-            10,
-            12,
             8,
+            6,
+            8,
+            5,
         )
         content_layout.setSpacing(
-            8
+            5
         )
 
         root_layout.addWidget(
@@ -151,17 +152,17 @@ class MainWindow(QMainWindow):
             "headerPanel"
         )
         header_panel.setFixedHeight(
-            82
+            58
         )
 
         header_layout = QHBoxLayout(
             header_panel
         )
         header_layout.setContentsMargins(
-            16,
-            10,
-            16,
-            10,
+            14,
+            5,
+            14,
+            5,
         )
 
         header_text = QVBoxLayout()
@@ -199,7 +200,7 @@ class MainWindow(QMainWindow):
         )
 
         self.header_status_label = QLabel(
-            "● ENGINE READY"
+            "● SİSTEM HAZIR"
         )
         self.header_status_label.setObjectName(
             "engineBadge"
@@ -222,17 +223,17 @@ class MainWindow(QMainWindow):
             "actionPanel"
         )
         action_panel.setFixedHeight(
-            58
+            46
         )
 
         action_layout = QHBoxLayout(
             action_panel
         )
         action_layout.setContentsMargins(
-            12,
             10,
-            12,
+            5,
             10,
+            5,
         )
 
         self.select_file_button = QPushButton(
@@ -385,19 +386,19 @@ class MainWindow(QMainWindow):
 
         self.tabs.addTab(
             self.timeline_tab,
-            "Timeline",
+            "Zaman Çizelgesi",
         )
         self.tabs.addTab(
             self.ip_analysis_tab,
-            "IP Analysis",
+            "IP Analizi",
         )
         self.tabs.addTab(
             self.network_graph_tab,
-            "Network Graph",
+            "Ağ Grafiği",
         )
         self.tabs.addTab(
             self.flow_tab,
-            "Flows",
+            "Akışlar",
         )
 
         self.analytics_loaded = {
@@ -412,7 +413,7 @@ class MainWindow(QMainWindow):
         )
 
         self.statusBar().showMessage(
-            "Engine ready. Select a PCAP/PCAPNG file to begin."
+            "Sistem hazır. Analiz için bir PCAP/PCAPNG dosyası seçin."
         )
 
     def create_sidebar(self):
@@ -421,20 +422,20 @@ class MainWindow(QMainWindow):
             "sidebar"
         )
         sidebar.setFixedWidth(
-            205
+            178
         )
 
         layout = QVBoxLayout(
             sidebar
         )
         layout.setContentsMargins(
-            14,
-            14,
-            14,
-            14,
+            9,
+            10,
+            9,
+            10,
         )
         layout.setSpacing(
-            7
+            5
         )
 
         brand_row = QHBoxLayout()
@@ -446,8 +447,8 @@ class MainWindow(QMainWindow):
             "brandMark"
         )
         brand_mark.setFixedSize(
-            44,
-            44,
+            36,
+            36,
         )
         brand_mark.setAlignment(
             Qt.AlignCenter
@@ -504,9 +505,10 @@ class MainWindow(QMainWindow):
         layout.addWidget(
             system_title
         )
+        system_title.hide()  # canonical status lives in header
 
         self.engine_status_label = QLabel(
-            "● ENGINE READY"
+            "● SİSTEM HAZIR"
         )
         self.engine_status_label.setObjectName(
             "engineBadge"
@@ -514,6 +516,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(
             self.engine_status_label
         )
+        self.engine_status_label.hide()  # avoid duplicate status badge
 
         layout.addSpacing(
             6
@@ -528,6 +531,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(
             modules_title
         )
+        modules_title.hide()
 
         for module in [
             "◦ Packet Parser",
@@ -546,13 +550,14 @@ class MainWindow(QMainWindow):
             layout.addWidget(
                 label
             )
+            label.hide()  # compact sidebar
 
         layout.addSpacing(
             6
         )
 
         live_title = QLabel(
-            "CURRENT ANALYSIS"
+            "GÜNCEL ANALİZ"
         )
         live_title.setObjectName(
             "sidebarSection"
@@ -563,26 +568,39 @@ class MainWindow(QMainWindow):
 
         self.sidebar_file_value = self.create_sidebar_metric(
             layout,
-            "CAPTURE",
+            "DOSYA",
             "No file selected",
         )
 
         self.sidebar_packet_value = self.create_sidebar_metric(
             layout,
-            "PACKETS",
+            "PAKETLER",
             "0",
         )
 
         self.sidebar_alert_value = self.create_sidebar_metric(
             layout,
-            "ALERTS",
+            "ALARMLAR",
             "0",
         )
 
         self.sidebar_risk_value = self.create_sidebar_metric(
             layout,
-            "RISK",
+            "RİSK",
             "LOW",
+        )
+
+        self.sidebar_file_value.setStyleSheet(
+            "font-size: 13px; font-weight: 700;"
+        )
+        self.sidebar_packet_value.setStyleSheet(
+            "font-size: 15px; font-weight: 800;"
+        )
+        self.sidebar_alert_value.setStyleSheet(
+            "font-size: 15px; font-weight: 800;"
+        )
+        self.sidebar_risk_value.setStyleSheet(
+            "font-size: 14px; font-weight: 800;"
         )
 
         layout.addStretch(
@@ -604,6 +622,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(
             footer
         )
+        footer.hide()
 
         return sidebar
 
@@ -652,24 +671,24 @@ class MainWindow(QMainWindow):
             "sectionPanel"
         )
         section.setFixedHeight(
-            210
+            98
         )
 
         section_layout = QVBoxLayout(
             section
         )
         section_layout.setContentsMargins(
-            10,
             8,
-            10,
+            5,
             8,
+            5,
         )
         section_layout.setSpacing(
-            4
+            2
         )
 
         section_title = QLabel(
-            "Security Overview"
+            "Güvenlik Özeti"
         )
         section_title.setObjectName(
             "sectionTitle"
@@ -684,6 +703,7 @@ class MainWindow(QMainWindow):
         section_subtitle.setObjectName(
             "sectionSubtitle"
         )
+        section_subtitle.hide()
 
         section_layout.addWidget(
             section_title
@@ -694,10 +714,10 @@ class MainWindow(QMainWindow):
 
         cards_layout = QGridLayout()
         cards_layout.setHorizontalSpacing(
-            9
+            6
         )
         cards_layout.setVerticalSpacing(
-            9
+            4
         )
 
         self.total_packets_label = QLabel(
@@ -727,7 +747,7 @@ class MainWindow(QMainWindow):
 
         cards = [
             (
-                "Total Packets",
+                "Toplam Paket",
                 self.total_packets_label,
                 "◉",
                 "statAccentBlue",
@@ -736,7 +756,7 @@ class MainWindow(QMainWindow):
                 0,
             ),
             (
-                "Unique IPs",
+                "Benzersiz IP",
                 self.unique_ips_label,
                 "◆",
                 "statAccentPurple",
@@ -745,7 +765,7 @@ class MainWindow(QMainWindow):
                 1,
             ),
             (
-                "Unique Ports",
+                "Benzersiz Port",
                 self.unique_ports_label,
                 "◇",
                 "statAccentBlue",
@@ -754,7 +774,7 @@ class MainWindow(QMainWindow):
                 2,
             ),
             (
-                "TCP Connections",
+                "TCP Bağlantıları",
                 self.tcp_connections_label,
                 "⇄",
                 "statAccentGreen",
@@ -763,7 +783,7 @@ class MainWindow(QMainWindow):
                 3,
             ),
             (
-                "UDP Traffic",
+                "UDP Trafiği",
                 self.udp_packets_label,
                 "◌",
                 "statAccentPurple",
@@ -772,7 +792,7 @@ class MainWindow(QMainWindow):
                 0,
             ),
             (
-                "Critical Alerts",
+                "Kritik Alarmlar",
                 self.critical_alerts_label,
                 "!",
                 "statAccentRed",
@@ -781,7 +801,7 @@ class MainWindow(QMainWindow):
                 1,
             ),
             (
-                "Suspicious Traffic",
+                "Şüpheli Trafik",
                 self.suspicious_label,
                 "⚠",
                 "statAccentOrange",
@@ -790,7 +810,7 @@ class MainWindow(QMainWindow):
                 2,
             ),
             (
-                "Risk Level",
+                "Risk Seviyesi",
                 self.risk_label,
                 "⬢",
                 "statAccentGreen",
@@ -800,7 +820,7 @@ class MainWindow(QMainWindow):
             ),
         ]
 
-        for (
+        for index, (
             title,
             label,
             icon,
@@ -808,7 +828,7 @@ class MainWindow(QMainWindow):
             hint,
             row,
             column,
-        ) in cards:
+        ) in enumerate(cards):
             cards_layout.addWidget(
                 self.create_stat_card(
                     title,
@@ -817,9 +837,20 @@ class MainWindow(QMainWindow):
                     accent,
                     hint,
                 ),
-                row,
-                column,
+                0,
+                index,
             )
+
+        # Risk karti daha uzun metin tasidigi icin daha genis tutulur.
+        for column_index in range(7):
+            cards_layout.setColumnStretch(
+                column_index,
+                1,
+            )
+        cards_layout.setColumnStretch(
+            7,
+            2,
+        )
 
         section_layout.addLayout(
             cards_layout
@@ -842,17 +873,17 @@ class MainWindow(QMainWindow):
             "statCard"
         )
         card.setFixedHeight(
-            74
+            56
         )
 
         layout = QVBoxLayout(
             card
         )
         layout.setContentsMargins(
-            10,
-            6,
-            10,
-            6,
+            7,
+            3,
+            7,
+            3,
         )
         layout.setSpacing(
             1
@@ -873,6 +904,12 @@ class MainWindow(QMainWindow):
         title_label.setObjectName(
             "statTitle"
         )
+        title_label.setStyleSheet(
+            "font-size: 11px; font-weight: 600;"
+        )
+        title_label.setAlignment(
+            Qt.AlignLeft | Qt.AlignVCenter
+        )
 
         top.addWidget(
             icon_label
@@ -887,6 +924,15 @@ class MainWindow(QMainWindow):
         value_label.setObjectName(
             "statValue"
         )
+        value_label.setAlignment(
+            Qt.AlignLeft | Qt.AlignVCenter
+        )
+        value_label.setMinimumHeight(
+            24
+        )
+        value_label.setStyleSheet(
+            "font-size: 20px; font-weight: 800;"
+        )
 
         hint_label = QLabel(
             hint
@@ -894,6 +940,7 @@ class MainWindow(QMainWindow):
         hint_label.setObjectName(
             "cardHint"
         )
+        hint_label.hide()  # compact KPI card
 
         layout.addLayout(
             top
@@ -937,24 +984,24 @@ class MainWindow(QMainWindow):
         )
         filter_panel_layout.setContentsMargins(
             10,
-            9,
+            6,
             10,
-            9,
+            6,
         )
         filter_panel_layout.setSpacing(
-            7
+            5
         )
 
         filter_layout = QHBoxLayout()
 
         self.source_filter = QLineEdit()
         self.source_filter.setPlaceholderText(
-            "Source IP"
+            "Kaynak IP"
         )
 
         self.destination_filter = QLineEdit()
         self.destination_filter.setPlaceholderText(
-            "Destination IP"
+            "Hedef IP"
         )
 
         self.port_filter = QLineEdit()
@@ -1061,40 +1108,111 @@ class MainWindow(QMainWindow):
             self.time_filter_check
         )
 
+        self.start_date_label = QLabel(
+            "Başlangıç Tarihi"
+        )
         time_filter_layout.addWidget(
-            QLabel(
-                "Başlangıç Tarihi"
-            )
+            self.start_date_label
         )
         time_filter_layout.addWidget(
             self.start_date_edit
         )
 
+        self.start_time_label = QLabel(
+            "Saat"
+        )
         time_filter_layout.addWidget(
-            QLabel(
-                "Saat"
-            )
+            self.start_time_label
         )
         time_filter_layout.addWidget(
             self.start_clock_edit
         )
 
+        self.end_date_label = QLabel(
+            "Bitiş Tarihi"
+        )
         time_filter_layout.addWidget(
-            QLabel(
-                "Bitiş Tarihi"
-            )
+            self.end_date_label
         )
         time_filter_layout.addWidget(
             self.end_date_edit
         )
 
+        self.end_time_label = QLabel(
+            "Saat"
+        )
         time_filter_layout.addWidget(
-            QLabel(
-                "Saat"
-            )
+            self.end_time_label
         )
         time_filter_layout.addWidget(
             self.end_clock_edit
+        )
+
+        self.relative_start_label = QLabel(
+            "Başlangıç"
+        )
+        self.relative_start_spin = QDoubleSpinBox()
+        self.relative_start_spin.setDecimals(
+            3
+        )
+        self.relative_start_spin.setSingleStep(
+            0.100
+        )
+        self.relative_start_spin.setSuffix(
+            " sn"
+        )
+        self.relative_start_spin.setMinimum(
+            0.0
+        )
+        self.relative_start_spin.setMaximum(
+            999999.0
+        )
+        self.relative_start_spin.setEnabled(
+            False
+        )
+
+        self.relative_end_label = QLabel(
+            "Bitiş"
+        )
+        self.relative_end_spin = QDoubleSpinBox()
+        self.relative_end_spin.setDecimals(
+            3
+        )
+        self.relative_end_spin.setSingleStep(
+            0.100
+        )
+        self.relative_end_spin.setSuffix(
+            " sn"
+        )
+        self.relative_end_spin.setMinimum(
+            0.0
+        )
+        self.relative_end_spin.setMaximum(
+            999999.0
+        )
+        self.relative_end_spin.setEnabled(
+            False
+        )
+
+        for widget in (
+            self.relative_start_label,
+            self.relative_start_spin,
+            self.relative_end_label,
+            self.relative_end_spin,
+        ):
+            widget.hide()
+
+        time_filter_layout.addWidget(
+            self.relative_start_label
+        )
+        time_filter_layout.addWidget(
+            self.relative_start_spin
+        )
+        time_filter_layout.addWidget(
+            self.relative_end_label
+        )
+        time_filter_layout.addWidget(
+            self.relative_end_spin
         )
 
         time_filter_layout.addStretch(
@@ -1122,20 +1240,27 @@ class MainWindow(QMainWindow):
             self.end_clock_edit.setEnabled
         )
 
+        self.time_filter_check.toggled.connect(
+            self.relative_start_spin.setEnabled
+        )
+        self.time_filter_check.toggled.connect(
+            self.relative_end_spin.setEnabled
+        )
+
         self.packet_table = QTableWidget()
 
         columns = [
-            "Time",
-            "Source IP",
-            "Destination IP",
-            "Protocol",
-            "Application / Frame",
-            "Source Port",
-            "Destination Port",
-            "Packet Size",
+            "Zaman",
+            "Kaynak IP",
+            "Hedef IP",
+            "Protokol",
+            "Uygulama / Frame",
+            "Kaynak Port",
+            "Hedef Port",
+            "Paket Boyutu",
             "TCP Flags",
-            "DNS Query",
-            "Source MAC",
+            "DNS Sorgusu",
+            "Kaynak MAC",
             "BSSID",
         ]
 
@@ -1162,6 +1287,9 @@ class MainWindow(QMainWindow):
         self.packet_table.setAlternatingRowColors(
             True
         )
+        self.packet_table.setMinimumHeight(
+            185
+        )
 
         self.packet_splitter = QSplitter(
             Qt.Vertical
@@ -1175,6 +1303,22 @@ class MainWindow(QMainWindow):
         self.packet_detail.setReadOnly(
             True
         )
+        # packet_detail professional inspection style
+        self.packet_detail.setStyleSheet(
+            "QTextEdit {"
+            "background: #081625;"
+            "border: 1px solid #233B55;"
+            "border-radius: 8px;"
+            "padding: 10px;"
+            "font-family: Consolas, 'Courier New', monospace;"
+            "font-size: 12px;"
+            "color: #DCE7F5;"
+            "selection-background-color: #164E78;"
+            "}"
+        )
+        self.packet_detail.setMinimumHeight(
+            205
+        )
         self.packet_detail.setPlaceholderText(
             (
                 "Bir paket seçerek Layer 2 / Layer 3 / "
@@ -1186,18 +1330,24 @@ class MainWindow(QMainWindow):
             self.packet_detail
         )
 
+        self.packet_splitter.setChildrenCollapsible(
+            False
+        )
+        self.packet_splitter.setHandleWidth(
+            8
+        )
         self.packet_splitter.setStretchFactor(
             0,
             4
         )
         self.packet_splitter.setStretchFactor(
             1,
-            2
+            5
         )
         self.packet_splitter.setSizes(
             [
-                360,
-                150,
+                255,
+                310,
             ]
         )
 
@@ -1218,7 +1368,7 @@ class MainWindow(QMainWindow):
 
         self.tabs.addTab(
             packet_widget,
-            "Packets",
+            "Paketler",
         )
 
     # =========================================================
@@ -1329,7 +1479,7 @@ class MainWindow(QMainWindow):
             "Destination Entity",
             "Risk",
             "Confidence",
-            "Packets",
+            "Paketler",
             "Context",
             "Reason",
         ]
@@ -1357,6 +1507,9 @@ class MainWindow(QMainWindow):
         self.alert_table.setAlternatingRowColors(
             True
         )
+        self.alert_table.setMinimumHeight(
+            185
+        )
 
         self.alert_splitter = QSplitter(
             Qt.Vertical
@@ -1370,6 +1523,22 @@ class MainWindow(QMainWindow):
         self.alert_detail.setReadOnly(
             True
         )
+        # alert_detail professional inspection style
+        self.alert_detail.setStyleSheet(
+            "QTextEdit {"
+            "background: #081625;"
+            "border: 1px solid #233B55;"
+            "border-radius: 8px;"
+            "padding: 10px;"
+            "font-family: Consolas, 'Courier New', monospace;"
+            "font-size: 12px;"
+            "color: #DCE7F5;"
+            "selection-background-color: #164E78;"
+            "}"
+        )
+        self.alert_detail.setMinimumHeight(
+            205
+        )
         self.alert_detail.setPlaceholderText(
             (
                 "Bir alarm seçerek risk, confidence, zaman, "
@@ -1381,18 +1550,24 @@ class MainWindow(QMainWindow):
             self.alert_detail
         )
 
+        self.alert_splitter.setChildrenCollapsible(
+            False
+        )
+        self.alert_splitter.setHandleWidth(
+            8
+        )
         self.alert_splitter.setStretchFactor(
             0,
             4
         )
         self.alert_splitter.setStretchFactor(
             1,
-            2
+            5
         )
         self.alert_splitter.setSizes(
             [
-                360,
-                150,
+                255,
+                310,
             ]
         )
 
@@ -1413,7 +1588,7 @@ class MainWindow(QMainWindow):
 
         self.tabs.addTab(
             alert_widget,
-            "Alerts",
+            "Alarmlar",
         )
 
     # =========================================================
@@ -1629,10 +1804,10 @@ class MainWindow(QMainWindow):
         )
 
         self.engine_status_label.setText(
-            "● ANALYZING"
+            "● ANALİZ EDİLİYOR"
         )
         self.header_status_label.setText(
-            "● ANALYZING"
+            "● ANALİZ EDİLİYOR"
         )
 
         self.analysis_progress_label.setText(
@@ -1700,7 +1875,7 @@ class MainWindow(QMainWindow):
         )
 
         self.header_status_label.setText(
-            "● ANALYZING"
+            "● ANALİZ EDİLİYOR"
         )
 
         self.analysis_progress_label.setText(
@@ -1793,10 +1968,10 @@ class MainWindow(QMainWindow):
         )
 
         self.engine_status_label.setText(
-            "● ANALYSIS COMPLETE"
+            "● ANALİZ TAMAMLANDI"
         )
         self.header_status_label.setText(
-            "● ANALYSIS COMPLETE"
+            "● ANALİZ TAMAMLANDI"
         )
         self.sidebar_packet_value.setText(
             str(
@@ -1864,10 +2039,10 @@ class MainWindow(QMainWindow):
         )
 
         self.engine_status_label.setText(
-            "● ANALYSIS FAILED"
+            "● ANALİZ BAŞARISIZ"
         )
         self.header_status_label.setText(
-            "● ANALYSIS FAILED"
+            "● ANALİZ BAŞARISIZ"
         )
 
         self.analysis_progress.setRange(
@@ -2107,63 +2282,105 @@ class MainWindow(QMainWindow):
     # PACKET TABLOSU / DETAY
     # =========================================================
 
-    @staticmethod
-    def format_packet_timestamp(
-        timestamp,
-    ):
-        if timestamp is None:
-            return ""
-
-        try:
-            milliseconds = int(
-                float(
-                    timestamp
-                )
-                * 1000
-            )
-
-            return (
-                QDateTime
-                .fromMSecsSinceEpoch(
-                    milliseconds
-                )
-                .toString(
-                    "yyyy-MM-dd HH:mm:ss.zzz"
-                )
-            )
-
-        except (
-            TypeError,
-            ValueError,
-            OverflowError,
-        ):
-            return str(
-                timestamp
-            )
-
-    def get_packet_application_label(
+    def _packet_raw_timestamp(
         self,
         packet,
     ):
-        application = packet.get(
-            "application_protocol"
+        value = packet.get(
+            "raw_timestamp"
         )
 
-        if application:
-            return str(
-                application
+        if value is None:
+            value = packet.get(
+                "timestamp"
             )
 
-        wlan_frame = packet.get(
-            "wlan_frame_name"
+        try:
+            return float(
+                value
+            )
+        except (
+            TypeError,
+            ValueError,
+        ):
+            return None
+
+    def _detect_relative_time_base(
+        self,
+        packets=None,
+    ):
+        packets = (
+            packets
+            if packets is not None
+            else self.packets
         )
 
-        if wlan_frame:
-            return str(
-                wlan_frame
+        values = []
+
+        for packet in packets:
+            value = self._packet_raw_timestamp(
+                packet
             )
 
-        return ""
+            if value is not None:
+                values.append(
+                    value
+                )
+
+        if not values:
+            return None
+
+        # Sentetik test PCAP'leri Unix epoch'a yakın küçük sayılar
+        # kullanır. Gerçek yakalamalar modern epoch değerleridir.
+        if max(values) < 946684800:
+            return min(
+                values
+            )
+
+        return None
+
+    def _format_packet_time(
+        self,
+        packet,
+    ):
+        raw_timestamp = (
+            self._packet_raw_timestamp(
+                packet
+            )
+        )
+
+        relative_base = getattr(
+            self,
+            "_relative_time_base",
+            None,
+        )
+
+        if relative_base is None:
+            relative_base = (
+                self._detect_relative_time_base(
+                    self.packets
+                )
+            )
+
+        if (
+            relative_base is not None
+            and raw_timestamp is not None
+        ):
+            return (
+                f"{raw_timestamp - relative_base:.3f} sn"
+            )
+
+        value = packet.get(
+            "timestamp"
+        )
+
+        return (
+            ""
+            if value is None
+            else str(
+                value
+            )
+        )
 
     def update_packet_table(
         self,
@@ -2192,44 +2409,22 @@ class MainWindow(QMainWindow):
                 packets_to_display
             ):
                 values = [
-                    self.format_packet_timestamp(
-                        packet.get(
-                            "timestamp"
-                        )
-                    ),
-                    packet.get(
-                        "src_ip"
-                    ),
-                    packet.get(
-                        "dst_ip"
-                    ),
-                    packet.get(
-                        "protocol"
-                    ),
-                    self.get_packet_application_label(
+                    self._format_packet_time(
                         packet
                     ),
+                    packet.get("src_ip"),
+                    packet.get("dst_ip"),
+                    packet.get("protocol"),
                     packet.get(
-                        "src_port"
+                        "application_protocol"
                     ),
-                    packet.get(
-                        "dst_port"
-                    ),
-                    packet.get(
-                        "packet_size"
-                    ),
-                    packet.get(
-                        "tcp_flags"
-                    ),
-                    packet.get(
-                        "dns_query"
-                    ),
-                    packet.get(
-                        "src_mac"
-                    ),
-                    packet.get(
-                        "bssid"
-                    ),
+                    packet.get("src_port"),
+                    packet.get("dst_port"),
+                    packet.get("packet_size"),
+                    packet.get("tcp_flags"),
+                    packet.get("dns_query"),
+                    packet.get("src_mac"),
+                    packet.get("bssid"),
                 ]
 
                 for (
@@ -2269,34 +2464,45 @@ class MainWindow(QMainWindow):
             ]
         )
 
+        raw_timestamp = (
+            self._packet_raw_timestamp(
+                packet
+            )
+        )
+
+        relative_base = (
+            self._detect_relative_time_base(
+                self.packets
+            )
+        )
+
+        if relative_base is not None:
+            time_title = "Göreli Zaman"
+        else:
+            time_title = "Zaman"
+
         detail_text = (
-            f"Timestamp: "
-            f"{self.format_packet_timestamp(packet.get('timestamp'))}\n"
-            f"Raw Timestamp: {packet.get('timestamp')}\n"
-            f"Source IP: {packet.get('src_ip')}\n"
-            f"Destination IP: {packet.get('dst_ip')}\n"
-            f"Source MAC: {packet.get('src_mac')}\n"
-            f"Destination MAC: {packet.get('dst_mac')}\n"
-            f"Protocol: {packet.get('protocol')}\n"
-            f"Application Protocol: {packet.get('application_protocol')}\n"
-            f"Source Port: {packet.get('src_port')}\n"
-            f"Destination Port: {packet.get('dst_port')}\n"
-            f"Packet Size: {packet.get('packet_size')} bytes\n"
+            f"Yakalama Başlangıcından Sonra: {self._format_packet_time(packet).replace("+", "")}\n"
+            f"Kaynak IP: {packet.get('src_ip')}\n"
+            f"Hedef IP: {packet.get('dst_ip')}\n"
+            f"Kaynak MAC: {packet.get('src_mac')}\n"
+            f"Hedef MAC: {packet.get('dst_mac')}\n"
+            f"Protokol: {packet.get('protocol')}\n"
+            f"Uygulama Protokolü: {packet.get('application_protocol')}\n"
+            f"Kaynak Port: {packet.get('src_port')}\n"
+            f"Hedef Port: {packet.get('dst_port')}\n"
+            f"Paket Boyutu: {packet.get('packet_size')} bayt\n"
             f"TCP Flags: {packet.get('tcp_flags')}\n"
-            f"DNS Query: {packet.get('dns_query')}\n"
-            f"HTTP Method: {packet.get('http_method')}\n"
+            f"DNS Sorgusu: {packet.get('dns_query')}\n"
+            f"HTTP Metodu: {packet.get('http_method')}\n"
             f"HTTP Host: {packet.get('http_host')}\n"
             f"HTTP Path: {packet.get('http_path')}\n"
-            f"HTTPS Detected: {packet.get('https_detected')}\n"
+            f"HTTPS Tespit Edildi: {packet.get('https_detected')}\n"
             f"ICMP Type: {packet.get('icmp_type')}\n"
             f"ICMP Code: {packet.get('icmp_code')}\n"
             f"SSID: {packet.get('ssid')}\n"
             f"BSSID: {packet.get('bssid')}\n"
-            f"Wi-Fi Channel: {packet.get('wifi_channel')}\n"
-            f"WLAN Category: "
-            f"{packet.get('wlan_frame_category')}\n"
-            f"WLAN Frame: "
-            f"{packet.get('wlan_frame_name')}\n"
+            f"Wi-Fi Kanalı: {packet.get('wifi_channel')}\n"
             f"WLAN Type/Subtype: "
             f"{packet.get('wlan_type')}/"
             f"{packet.get('wlan_subtype')}\n"
@@ -2321,30 +2527,121 @@ class MainWindow(QMainWindow):
         timestamps = []
 
         for packet in self.packets:
-            timestamp = packet.get(
-                "timestamp"
+            timestamp = (
+                self._packet_raw_timestamp(
+                    packet
+                )
             )
 
-            if timestamp is None:
-                continue
-
-            try:
+            if timestamp is not None:
                 timestamps.append(
-                    float(
-                        timestamp
-                    )
+                    timestamp
                 )
-            except (
-                TypeError,
-                ValueError,
-            ):
-                continue
 
         if not timestamps:
             self.time_filter_check.setChecked(
                 False
             )
             return
+
+        relative_base = (
+            self._detect_relative_time_base(
+                self.packets
+            )
+        )
+
+        self._relative_time_base = (
+            relative_base
+        )
+
+        date_widgets = [
+            getattr(
+                self,
+                "start_date_label",
+                None,
+            ),
+            self.start_date_edit,
+            getattr(
+                self,
+                "start_time_label",
+                None,
+            ),
+            self.start_clock_edit,
+            getattr(
+                self,
+                "end_date_label",
+                None,
+            ),
+            self.end_date_edit,
+            getattr(
+                self,
+                "end_time_label",
+                None,
+            ),
+            self.end_clock_edit,
+        ]
+
+        relative_widgets = [
+            self.relative_start_label,
+            self.relative_start_spin,
+            self.relative_end_label,
+            self.relative_end_spin,
+        ]
+
+        self.time_filter_check.setChecked(
+            False
+        )
+        self.time_filter_check.setEnabled(
+            True
+        )
+
+        if relative_base is not None:
+            for widget in date_widgets:
+                if widget is not None:
+                    widget.hide()
+
+            for widget in relative_widgets:
+                widget.show()
+
+            duration = max(
+                0.0,
+                max(
+                    timestamps
+                )
+                - relative_base,
+            )
+
+            self.relative_start_spin.setRange(
+                0.0,
+                duration,
+            )
+            self.relative_end_spin.setRange(
+                0.0,
+                duration,
+            )
+            self.relative_start_spin.setValue(
+                0.0
+            )
+            self.relative_end_spin.setValue(
+                duration
+            )
+
+            self.time_filter_check.setText(
+                "Yakalama Zamanına Göre Filtrele"
+            )
+
+            return
+
+        for widget in relative_widgets:
+            widget.hide()
+
+        for widget in date_widgets:
+            if widget is not None:
+                widget.show()
+
+        self.time_filter_check.setText(
+            "Tarih/Saat filtresi"
+        )
 
         minimum = int(
             min(
@@ -2414,40 +2711,75 @@ class MainWindow(QMainWindow):
             .isChecked()
         )
 
-        start_datetime = QDateTime(
-            self.start_date_edit.date(),
-            self.start_clock_edit.time(),
-        )
-
-        end_datetime = QDateTime(
-            self.end_date_edit.date(),
-            self.end_clock_edit.time(),
-        )
-
-        start_timestamp = (
-            start_datetime
-            .toSecsSinceEpoch()
-        )
-
-        end_timestamp = (
-            end_datetime
-            .toSecsSinceEpoch()
-        )
-
-        if (
-            use_time_filter
-            and start_timestamp
-            > end_timestamp
-        ):
-            QMessageBox.warning(
-                self,
-                "Geçersiz Tarih/Saat Aralığı",
-                (
-                    "Başlangıç zamanı bitiş "
-                    "zamanından büyük olamaz."
-                ),
+        relative_base = (
+            self._detect_relative_time_base(
+                self.packets
             )
-            return
+        )
+
+        start_timestamp = None
+        end_timestamp = None
+        start_relative = None
+        end_relative = None
+
+        if use_time_filter:
+            if relative_base is not None:
+                start_relative = (
+                    self.relative_start_spin
+                    .value()
+                )
+                end_relative = (
+                    self.relative_end_spin
+                    .value()
+                )
+
+                if (
+                    start_relative
+                    > end_relative
+                ):
+                    QMessageBox.warning(
+                        self,
+                        "Geçersiz Göreli Zaman Aralığı",
+                        (
+                            "Başlangıç süresi bitiş "
+                            "süresinden büyük olamaz."
+                        ),
+                    )
+                    return
+            else:
+                start_datetime = QDateTime(
+                    self.start_date_edit.date(),
+                    self.start_clock_edit.time(),
+                )
+
+                end_datetime = QDateTime(
+                    self.end_date_edit.date(),
+                    self.end_clock_edit.time(),
+                )
+
+                start_timestamp = (
+                    start_datetime
+                    .toSecsSinceEpoch()
+                )
+
+                end_timestamp = (
+                    end_datetime
+                    .toSecsSinceEpoch()
+                )
+
+                if (
+                    start_timestamp
+                    > end_timestamp
+                ):
+                    QMessageBox.warning(
+                        self,
+                        "Geçersiz Tarih/Saat Aralığı",
+                        (
+                            "Başlangıç zamanı bitiş "
+                            "zamanından büyük olamaz."
+                        ),
+                    )
+                    return
 
         filtered_packets = []
 
@@ -2542,30 +2874,36 @@ class MainWindow(QMainWindow):
                     continue
 
             if use_time_filter:
-                timestamp = packet.get(
-                    "timestamp"
+                timestamp = (
+                    self._packet_raw_timestamp(
+                        packet
+                    )
                 )
 
                 if timestamp is None:
                     continue
 
-                try:
-                    timestamp = float(
+                if relative_base is not None:
+                    relative_time = (
                         timestamp
+                        - relative_base
                     )
-                except (
-                    TypeError,
-                    ValueError,
-                ):
-                    continue
 
-                if (
-                    timestamp
-                    < start_timestamp
-                    or timestamp
-                    > end_timestamp
-                ):
-                    continue
+                    if (
+                        relative_time
+                        < start_relative
+                        or relative_time
+                        > end_relative
+                    ):
+                        continue
+                else:
+                    if (
+                        timestamp
+                        < start_timestamp
+                        or timestamp
+                        > end_timestamp
+                    ):
+                        continue
 
             filtered_packets.append(
                 packet
@@ -2725,14 +3063,14 @@ class MainWindow(QMainWindow):
 
         if destination:
             prefixes = [
-                "Destination MAC:",
+                "Hedef MAC:",
                 "MAC 2:",
                 "Client MAC:",
                 "Target MAC:",
             ]
         else:
             prefixes = [
-                "Source MAC:",
+                "Kaynak MAC:",
                 "MAC 1:",
                 "AP MAC:",
                 "Attacker MAC:",
@@ -3042,13 +3380,13 @@ class MainWindow(QMainWindow):
             f"Severity: {alert.get('severity')}\n"
             f"Risk Score: {alert.get('risk_score')}\n"
             f"Confidence: {alert.get('confidence')}\n"
-            f"Source IP: {alert.get('source_ip')}\n"
-            f"Destination IP: {alert.get('destination_ip')}\n"
+            f"Kaynak IP: {alert.get('source_ip')}\n"
+            f"Hedef IP: {alert.get('destination_ip')}\n"
             f"Source Entity: {self.get_alert_entity(alert, False)}\n"
             f"Destination Entity: {self.get_alert_entity(alert, True)}\n"
             f"Context: {self.get_alert_context(alert)}\n"
-            f"Source Port: {alert.get('source_port')}\n"
-            f"Destination Port: {alert.get('destination_port')}\n"
+            f"Kaynak Port: {alert.get('source_port')}\n"
+            f"Hedef Port: {alert.get('destination_port')}\n"
             f"First Seen: {alert.get('first_seen')}\n"
             f"Last Seen: {alert.get('last_seen')}\n"
             f"Packet Count: {alert.get('packet_count')}\n\n"
