@@ -10,7 +10,9 @@ Masaüstü tabanlı profesyonel bir **Network Traffic Analyzer & Intrusion Detec
 
 ## ✨ Proje Özeti
 
-Uygulama `.pcap` ve `.pcapng` ağ kayıtlarını analiz eder; paket ve flow seviyesinde trafik bilgilerini çıkarır, klasik ve kablosuz saldırıları tespit eder, risk skorunu hesaplar ve sonuçları profesyonel bir PySide6 dashboard üzerinde gösterir.
+Uygulama `.pcap` ve `.pcapng` ağ kayıtlarını analiz eder; paket ve flow seviyesinde trafik bilgilerini çıkarır, klasik ve kablosuz saldırıları tespit eder, güvenlik olaylarını korele ederek **0–100 aralığında genel risk skoru** hesaplar ve sonuçları PySide6 tabanlı profesyonel bir güvenlik panelinde gösterir.
+
+Projenin amacı yalnızca paketleri listelemek değil; ağ trafiğini analiz ederek **normal ve şüpheli davranışları ayırmak, saldırı belirtilerini tespit etmek, teknik kanıtları göstermek ve analiz sonucunu raporlamaktır.**
 
 ### ✅ Tamamlanan Ana Özellikler
 
@@ -19,13 +21,15 @@ Uygulama `.pcap` ve `.pcapng` ağ kayıtlarını analiz eder; paket ve flow sevi
 - ✅ Traffic Analyzer
 - ✅ Flow Analyzer
 - ✅ Detection Engine
-- ✅ Risk Correlation Engine
+- ✅ 0–100 Risk Correlation Engine
 - ✅ Wireless IDS
 - ✅ Timeline
 - ✅ IP Analysis
 - ✅ Network Graph
-- ✅ JSON / HTML / PDF raporlama
+- ✅ JSON / HTML / PDF / Excel raporlama
 - ✅ Background Worker + Progress Bar
+- ✅ Büyük PCAP dosyalarında streaming analiz
+- ✅ Windows `.exe` paketleme
 - ✅ 16/16 Regression Test
 
 ---
@@ -54,6 +58,8 @@ PCAP / NETWORK TRAFFIC
          REPORT
 ```
 
+Her modül ayrı bir sorumluluk taşır. Paket seviyesi bilgiler önce trafik ve flow analizinden geçirilir, ardından detection kuralları çalıştırılır ve oluşan güvenlik olayları Risk Engine tarafından korele edilir.
+
 ---
 
 ## 📦 PCAP Analizi
@@ -65,13 +71,15 @@ Uygulama:
 - Analizi `QThread` üzerinden arka planda çalıştırır.
 - Analiz sırasında progress bar gösterir.
 - Bozuk ve geçersiz PCAP dosyalarını kontrol eder.
-- Malformed paketlerde uygulamanın tamamen çökmesini engeller.
+- Malformed paketlerin uygulamanın tamamen çökmesine neden olmasını engeller.
+- Gerçek PCAP dosyalarında paket zamanlarını okunabilir tarih/saat biçiminde gösterir.
+- Sentetik test PCAP'lerinde zamanı yakalama başlangıcına göre göreli saniye olarak gösterir.
 
 ---
 
 ## 🔬 Paket Seviyesi Bilgiler
 
-Uygulama mümkün olan paketlerde şu bilgileri çıkarır:
+Uygulama desteklenen paketlerde şu bilgileri çıkarır:
 
 - Timestamp
 - Source IP
@@ -107,14 +115,55 @@ Dashboard üzerinde şu bilgiler gösterilir:
 - ⚠️ Suspicious Traffic
 - 🛡️ Risk Level + Risk Score
 
-### Risk Seviyeleri
+---
 
-| Seviye | Anlamı |
-|---|---|
-| 🟢 LOW | Düşük risk |
-| 🟡 MEDIUM | İncelenmesi gereken trafik |
-| 🟠 HIGH | Güçlü saldırı göstergesi |
-| 🔴 CRITICAL | Çok yüksek / korele risk |
+## 🧮 Risk Correlation Engine
+
+Genel risk skoru **0–100** aralığında hesaplanır.
+
+| Skor | Seviye | Anlamı |
+|---|---|---|
+| 0–24 | 🟢 LOW | Düşük risk |
+| 25–49 | 🟡 MEDIUM | İncelenmesi gereken trafik |
+| 50–74 | 🟠 HIGH | Güçlü saldırı göstergesi |
+| 75–100 | 🔴 CRITICAL | Çok yüksek / korele risk |
+
+Risk Engine yalnızca detector skorlarını doğrudan toplamaz.
+
+Genel risk hesaplamasında:
+
+- En yüksek alarm seviyesi
+- Birden fazla alarmın birlikte görülmesi
+- Birbirinden farklı saldırı türlerinin korelasyonu
+
+değerlendirilir.
+
+### Örnek: `combined_attack.pcap`
+
+```text
+En yüksek alarm seviyesi: HIGH
+        ↓
+Başlangıç risk skoru: 60
+
+Birden fazla alarm:
+        +5
+
+3 farklı saldırı türü:
+        +10
+
+Sonuç:
+75 / 100 → CRITICAL
+```
+
+Bu PCAP üzerinde:
+
+- `PORT_SCAN`
+- `SYN_SCAN`
+- `ICMP_FLOOD`
+
+tespitleri birlikte görülmektedir.
+
+> ℹ️ Dashboard üzerindeki **Critical Alerts** değeri bireysel CRITICAL seviyeli alarm sayısını gösterirken, genel **Risk Level** farklı güvenlik olaylarının korelasyonu sonucunda CRITICAL olabilir.
 
 ---
 
@@ -164,7 +213,7 @@ KRACK_ATTACK
 
 Gerçek `krack.pcap` üzerinde saldırı tespit edilmiştir.
 
-`ewil.pcap` Evil Twin örneğinde ise yanlış KRACK alarmı oluşmadığı doğrulanmıştır.
+Evil Twin örneğinde ise gerekli KRACK koşulları oluşmadığı için yanlış KRACK alarmı üretilmediği doğrulanmıştır.
 
 ---
 
@@ -187,13 +236,15 @@ Flows ekranında:
 
 bilgileri gösterilir.
 
+Flow analizi sayesinde tek tek paketler yerine aynı ağ iletişimine ait paketlar toplu şekilde incelenebilir.
+
 ---
 
 ## 📊 Analiz Ekranları
 
 ### 📦 Packets
 
-Paket tablosu ve detay görünümü bulunur.
+Paket tablosu ve paket detay görünümü bulunur.
 
 Filtreler:
 
@@ -201,8 +252,12 @@ Filtreler:
 - Destination IP
 - Port
 - Protocol
-- Başlangıç tarihi / saati
-- Bitiş tarihi / saati
+- Başlangıç zamanı
+- Bitiş zamanı
+
+Gerçek PCAP dosyalarında okunabilir tarih/saat, sentetik test dosyalarında ise yakalama başlangıcına göre göreli zaman kullanılır.
+
+---
 
 ### 🚨 Alerts
 
@@ -220,9 +275,13 @@ Alarm detaylarında:
 
 gösterilir.
 
+---
+
 ### ⏱️ Timeline
 
 Trafik yoğunluğu ve güvenlik olayları zaman çizgisi üzerinde gösterilir.
+
+---
 
 ### 🌐 IP Analysis
 
@@ -238,11 +297,18 @@ Her IP için:
 
 bilgileri hesaplanır.
 
+Şüpheli IP'ler için neden şüpheli olduklarını açıklayan güvenlik bilgileri de sunulur.
+
+---
+
 ### 🕸️ Network Graph
 
 - IP trafiğinde IP tabanlı graph
 - Wireless trafikte MAC / BSSID tabanlı graph
+- Ağ bağlantılarının görsel gösterimi
 - Şüpheli varlıkların görsel ayrımı
+
+---
 
 ### 🔁 Flows
 
@@ -257,10 +323,29 @@ Analiz sonuçları şu formatlarda dışa aktarılabilir:
 - 📄 JSON
 - 🌐 HTML
 - 📕 PDF
+- 📊 Excel
+
+Raporlarda analiz sonuçlarına göre:
+
+- Genel güvenlik özeti
+- Risk seviyesi ve risk skoru
+- Paket / IP / port istatistikleri
+- Protokol dağılımı
+- Security alerts
+- Teknik kanıtlar
+- Flow bilgileri
+- Önemli varlıklar
+- Bağlantılar
+- Öneriler
+- Paket örnekleri
+
+sunulur.
+
+Excel raporları birden fazla çalışma sayfası kullanılarak yapılandırılmış şekilde oluşturulur.
 
 ---
 
-## ✅ Final Regression Test
+## ✅ Regression Test
 
 Test komutu:
 
@@ -268,7 +353,7 @@ Test komutu:
 python run_regression_tests.py
 ```
 
-Final sonuç:
+Son doğrulama sonucu:
 
 ```text
 PASS: 16
@@ -280,28 +365,39 @@ SKIPPED: 0
 
 | Senaryo | Sonuç |
 |---|---|
-| Normal Web Traffic | ✅ LOW / alarm yok |
+| Normal Web Traffic | ✅ LOW / Alarm yok |
 | Port Scan | ✅ PORT_SCAN / HIGH |
 | SYN Scan | ✅ SYN_SCAN / HIGH |
 | ICMP Flood | ✅ ICMP_FLOOD / HIGH |
 | DNS Anomaly | ✅ DNS_ANOMALY / MEDIUM |
 | Traffic Burst | ✅ TRAFFIC_BURST / MEDIUM |
-| Combined Attack | ✅ CRITICAL |
-| Disassociation | ✅ HIGH |
+| Combined Attack | ✅ PORT_SCAN + SYN_SCAN + ICMP_FLOOD / CRITICAL / 75/100 |
+| Disassociation | ✅ DISASSOCIATION_ATTACK / HIGH |
 
 ### Gerçek PCAP Testleri
 
 | Senaryo | Sonuç |
 |---|---|
-| SYN Flood | ✅ SYN_FLOOD |
-| Smurf | ✅ SMURF_ATTACK |
-| MITM | ✅ ARP_SPOOFING |
-| Deauthentication | ✅ DEAUTH_ATTACK |
-| Rogue AP | ✅ ROGUE_AP |
-| Evil Twin | ✅ EVIL_TWIN |
-| KRACK | ✅ KRACK_ATTACK |
+| SYN Flood | ✅ SYN_FLOOD / CRITICAL |
+| Smurf | ✅ SMURF_ATTACK / CRITICAL |
+| MITM / ARP Spoofing | ✅ ARP_SPOOFING / CRITICAL |
+| Deauthentication | ✅ DEAUTH_ATTACK / HIGH |
+| Deauthentication - ikinci örnek | ✅ DEAUTH_ATTACK / HIGH |
+| Rogue AP | ✅ ROGUE_AP / HIGH |
+| Evil Twin | ✅ EVIL_TWIN / CRITICAL |
+| KRACK | ✅ KRACK_ATTACK / CRITICAL |
 
-> 📌 Gerçek PCAP dosyaları repository'e eklenmez. `data/real_pcaps/` klasörü `.gitignore` içerisindedir.
+Toplam:
+
+```text
+8 Sentetik Test
++
+8 Gerçek PCAP Testi
+=
+16 / 16 PASS
+```
+
+> 📌 Gerçek saldırı PCAP dosyaları repository'e eklenmez. `data/real_pcaps/` klasörü `.gitignore` içerisindedir.
 
 ---
 
@@ -313,9 +409,10 @@ Projede:
 - ✅ Malformed PCAP hata yönetimi
 - ✅ Streaming packet read
 - ✅ Malformed packet exception handling
-- ✅ File/path validation
+- ✅ File / path validation
 - ✅ Background worker thread
 - ✅ Kontrollü logging
+- ✅ Büyük PCAP dosyalarında arayüzü bloke etmeyen analiz yapısı
 
 uygulanmıştır.
 
@@ -323,34 +420,40 @@ uygulanmıştır.
 
 ## 🚀 Kurulum
 
-### 1. Repository'i klonlayın
+### 1. Repository'i Klonlayın
 
 ```bash
 git clone https://github.com/beyza-gunel/Network-Traffic-Analyzer-IDS.git
 cd Network-Traffic-Analyzer-IDS
 ```
 
-### 2. Virtual Environment oluşturun
+### 2. Virtual Environment Oluşturun
 
 ```powershell
 python -m venv venv
 .\venv\Scripts\Activate.ps1
 ```
 
-PowerShell engeli varsa:
+PowerShell script çalıştırmayı engelliyorsa:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\venv\Scripts\Activate.ps1
 ```
 
-### 3. Bağımlılıkları yükleyin
+Ardından:
+
+```powershell
+.\venv\Scripts\Activate.ps1
+```
+
+### 3. Bağımlılıkları Yükleyin
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4. Uygulamayı çalıştırın
+### 4. Uygulamayı Çalıştırın
 
 ```bash
 python main.py
@@ -358,14 +461,71 @@ python main.py
 
 ---
 
+## 🖥️ Windows Masaüstü Uygulaması
+
+Proje **PyInstaller** kullanılarak Windows üzerinde çalıştırılabilir `.exe` masaüstü uygulaması haline getirilebilir.
+
+Paketleme komutu:
+
+```powershell
+pyinstaller --noconfirm --clean --windowed --name "NetworkTrafficAnalyzerIDS" main.py
+```
+
+Paketleme tamamlandıktan sonra:
+
+```text
+dist/
+└── NetworkTrafficAnalyzerIDS/
+    ├── NetworkTrafficAnalyzerIDS.exe
+    └── _internal/
+```
+
+yapısı oluşur.
+
+Uygulama:
+
+```text
+NetworkTrafficAnalyzerIDS.exe
+```
+
+dosyasına çift tıklanarak çalıştırılabilir.
+
+### Önemli
+
+`--onedir` paketleme yöntemi kullanıldığı için:
+
+```text
+NetworkTrafficAnalyzerIDS.exe
++
+_internal/
+```
+
+birlikte tutulmalıdır.
+
+`.exe` dosyasının tek başına başka bir klasöre taşınması önerilmez.
+
+Paketlenmiş sürümün çalıştırılması için:
+
+- VS Code açılması gerekmez.
+- Virtual environment'ın manuel olarak etkinleştirilmesi gerekmez.
+- `python main.py` komutunun çalıştırılması gerekmez.
+
+> 📌 `build/`, `dist/` ve PyInstaller `.spec` dosyaları repository'e eklenmez.
+
+Kaynak kod üzerinde değişiklik yapıldığında `.exe` sürümünün güncellenmesi için uygulama yeniden paketlenmelidir.
+
+---
+
 ## 🎮 Kullanım
 
-1. **PCAP DOSYASI SEÇ**
-2. `.pcap` veya `.pcapng` dosyasını seç
-3. **ANALİZİ BAŞLAT**
-4. Progress bar üzerinden durumu takip et
-5. Dashboard ve analiz sekmelerini incele
-6. İstersen JSON / HTML / PDF rapor oluştur
+1. **PCAP DOSYASI SEÇ** butonuna basın.
+2. `.pcap` veya `.pcapng` dosyasını seçin.
+3. **ANALİZİ BAŞLAT** butonuna basın.
+4. Progress bar üzerinden analiz durumunu takip edin.
+5. Dashboard sonuçlarını inceleyin.
+6. Packets, Alerts, Timeline, IP Analysis, Network Graph ve Flows sekmelerini inceleyin.
+7. Gerekirse paketleri filtreleyin.
+8. Analiz sonucunu JSON / HTML / PDF / Excel formatında dışa aktarın.
 
 ---
 
@@ -380,7 +540,28 @@ NetworkTrafficAnalyzer/
 ├── run_regression_tests.py
 │
 ├── core/
+│   ├── packet_parser.py
+│   ├── traffic_analyzer.py
+│   ├── detection_engine.py
+│   ├── risk_engine.py
+│   └── flow_analyzer.py
+│
 ├── detectors/
+│   ├── port_scan.py
+│   ├── syn_scan.py
+│   ├── syn_flood.py
+│   ├── icmp_flood.py
+│   ├── smurf.py
+│   ├── arp_spoofing.py
+│   ├── unusual_port.py
+│   ├── dns_anomaly.py
+│   ├── traffic_burst.py
+│   ├── deauth.py
+│   ├── disassociation.py
+│   ├── rogue_ap.py
+│   ├── evil_twin.py
+│   └── krack.py
+│
 ├── models/
 ├── services/
 ├── workers/
@@ -399,28 +580,83 @@ NetworkTrafficAnalyzer/
 - Python
 - PySide6
 - Scapy
+- Pandas
 - Matplotlib
 - NetworkX
-- Pandas
+- OpenPyXL
+- PyInstaller
+
+---
+
+## 🧪 Test Verileri
+
+Repository içerisinde güvenli ve sentetik test PCAP dosyaları bulunur.
+
+Örnek:
+
+```text
+data/test_pcaps/
+├── normal_web_traffic.pcap
+├── port_scan.pcap
+├── syn_scan.pcap
+├── icmp_flood.pcap
+├── dns_anomaly.pcap
+├── traffic_burst.pcap
+├── combined_attack.pcap
+└── disassociation.pcap
+```
+
+Gerçek saldırı PCAP dosyaları boyut, kaynak ve güvenlik nedenleriyle repository içerisinde tutulmaz.
 
 ---
 
 ## 🏁 Proje Durumu
 
-### ✅ FINAL APPLICATION COMPLETED
+### ✅ CORE APPLICATION COMPLETED
 
-- ✅ Professional Dashboard
+- ✅ Professional Security Dashboard
+- ✅ PCAP / PCAPNG Analysis
+- ✅ Packet Analysis
+- ✅ Flow Analysis
 - ✅ Multi-Layer IDS
 - ✅ Wireless IDS
-- ✅ Risk Correlation
-- ✅ Flow Analysis
-- ✅ JSON / HTML / PDF Reports
+- ✅ 0–100 Risk Correlation Engine
+- ✅ Timeline Analysis
+- ✅ IP Analysis
+- ✅ Network Graph
+- ✅ JSON Reports
+- ✅ HTML Reports
+- ✅ PDF Reports
+- ✅ Excel Reports
+- ✅ Windows Executable Packaging
+- ✅ Background Analysis
+- ✅ Malformed PCAP Handling
 - ✅ 16/16 Regression Test
 
 ---
 
 ## ⚖️ Etik Kullanım
 
-Bu yazılım savunma, eğitim ve laboratuvar amaçlıdır.
+Bu yazılım savunma, eğitim ve kontrollü laboratuvar amaçlıdır.
 
-İzinsiz ağ dinleme, saldırı gerçekleştirme veya üçüncü taraf sistemlerde yetkisiz test amacıyla kullanılmamalıdır.
+İzinsiz ağ dinleme, üçüncü taraf sistemlerde yetkisiz analiz, saldırı gerçekleştirme veya izinsiz güvenlik testi amacıyla kullanılmamalıdır.
+
+Kullanıcı, analiz ettiği ağ trafiği ve PCAP kayıtları üzerinde gerekli izinlere sahip olmaktan sorumludur.
+
+---
+
+## 👩‍💻 Geliştirici
+
+**Beyza Günel**
+
+Bilgisayar Mühendisliği
+
+GitHub: `beyza-gunel`
+
+---
+
+## 📌 Repository
+
+```text
+https://github.com/beyza-gunel/Network-Traffic-Analyzer-IDS
+```
